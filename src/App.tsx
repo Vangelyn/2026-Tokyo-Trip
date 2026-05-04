@@ -97,9 +97,9 @@ function Login() {
           await updateDoc(userDocRef, { photoURL: result.user.photoURL });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert('登入失敗，請稍後再試。');
+      alert(`登入失敗: ${error.message || error}`);
     } finally {
       setLoading(false);
     }

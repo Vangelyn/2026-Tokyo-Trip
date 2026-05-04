@@ -32,6 +32,7 @@ export function Bookkeeping() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [initialBudget, setInitialBudget] = useState(50000); // Default 5w
   const [budgetCurrency, setBudgetCurrency] = useState('TWD');
+  const [displayCurrency, setDisplayCurrency] = useState('TWD');
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   
@@ -50,6 +51,7 @@ export function Bookkeeping() {
           setInitialBudget(memberDoc.data().initialBudget);
           if (memberDoc.data().currency) {
              setBudgetCurrency(memberDoc.data().currency);
+             setDisplayCurrency(memberDoc.data().currency);
           }
         }
       } catch (e) {
@@ -76,23 +78,34 @@ export function Bookkeeping() {
     return () => unsubscribe();
   }, [tripId, user]);
 
-  const handleUpdateBudget = async (newBudget: number, newCurrency: string) => {
+  const handleUpdateBudget = async (newVal: string) => {
     if (!tripId || !user) return;
+    const newBudget = Number(newVal);
+    if (isNaN(newBudget) || newBudget <= 0) {
+      setIsEditingBudget(false);
+      return;
+    }
     setInitialBudget(newBudget);
-    setBudgetCurrency(newCurrency);
+    setBudgetCurrency(displayCurrency);
     setIsEditingBudget(false);
     try {
       await updateDoc(doc(db, `trips/${tripId}/members/${user.uid}`), {
         initialBudget: newBudget,
-        currency: newCurrency
+        currency: displayCurrency
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}/members/${user.uid}`);
     }
   };
 
+  const convertedBudget = displayCurrency === budgetCurrency 
+    ? initialBudget 
+    : (budgetCurrency === 'JPY' && displayCurrency === 'TWD' 
+        ? initialBudget * jpyToTwdRate 
+        : initialBudget / jpyToTwdRate);
+
   const totalSpent = expenses.reduce((acc, curr) => {
-    if (budgetCurrency === 'TWD') {
+    if (displayCurrency === 'TWD') {
        const costInTWD = curr.currency === 'JPY' ? curr.amount * jpyToTwdRate : curr.amount;
        return acc + costInTWD;
     } else {
@@ -101,40 +114,43 @@ export function Bookkeeping() {
     }
   }, 0);
 
-  const remaining = initialBudget - totalSpent;
+  const remaining = convertedBudget - totalSpent;
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="bg-emerald-500 pt-12 pb-6 px-6 text-white rounded-b-3xl shadow-sm z-10 relative">
         <div className="flex justify-between items-center mb-6">
-          <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20">
+          <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 active:scale-95 transition-transform">
             <ChevronLeft className="w-5 h-5" />
           </button>
           <h1 className="text-lg font-bold">記帳本</h1>
-          <div className="w-8 h-8"></div>
+          <button 
+            onClick={() => setDisplayCurrency(prev => prev === 'JPY' ? 'TWD' : 'JPY')} 
+            className="px-3 h-8 flex items-center justify-center rounded-full bg-white/20 text-xs font-bold font-mono tracking-wider transition-colors active:scale-95 border-2 border-white/30 hover:bg-white/30"
+            title="切換顯示幣別"
+          >
+            {displayCurrency}
+          </button>
         </div>
 
         <div className="text-center mb-2">
-          <p className="text-emerald-100 text-sm mb-1 font-bold">剩餘總預算 ({budgetCurrency})</p>
+          <p className="text-emerald-100 text-sm mb-1 font-bold">剩餘總預算 ({displayCurrency})</p>
           <div className="text-5xl font-extrabold tracking-tighter shadow-inner px-4 py-2 bg-emerald-600/50 rounded-3xl inline-block border-2 border-emerald-400">
-            {budgetCurrency === 'JPY' ? '¥' : '$'}{Math.round(remaining).toLocaleString()}
+            {displayCurrency === 'JPY' ? '¥' : '$'}{Math.round(remaining).toLocaleString()}
           </div>
         </div>
 
         <div className="flex justify-between items-center mt-6 bg-emerald-600/80 p-4 rounded-[2rem] backdrop-blur-sm border-2 border-emerald-400/50 shadow-inner">
           <div className="flex-1 text-center">
-            <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-widest mb-1 mt-1">總預算</p>
+            <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-widest mb-1 mt-1">設定總額 ({displayCurrency})</p>
             {isEditingBudget ? (
                <div className="flex flex-col items-center gap-2">
-                  <div className="flex bg-white/20 rounded-lg p-0.5 max-w-[120px]">
-                    <button className={cn("flex-1 text-xs px-2 py-1 rounded font-bold transition-colors", budgetCurrency === 'JPY' ? 'bg-white text-emerald-600' : 'text-emerald-100')} onClick={() => handleUpdateBudget(initialBudget, 'JPY')}>JPY</button>
-                    <button className={cn("flex-1 text-xs px-2 py-1 rounded font-bold transition-colors", budgetCurrency === 'TWD' ? 'bg-white text-emerald-600' : 'text-emerald-100')} onClick={() => handleUpdateBudget(initialBudget, 'TWD')}>TWD</button>
-                  </div>
                   <input 
                     type="number" 
                     autoFocus
-                    defaultValue={initialBudget}
-                    onBlur={(e) => handleUpdateBudget(Number(e.target.value), budgetCurrency)}
+                    defaultValue={Math.round(convertedBudget)}
+                    onBlur={(e) => handleUpdateBudget(e.target.value)}
+                    onKeyDown={(e) => { if(e.key === 'Enter') handleUpdateBudget(e.currentTarget.value) }}
                     className="w-24 bg-white text-gray-900 font-black rounded-xl px-2 py-1 text-center appearance-none outline-none shadow-sm"
                   />
                </div>
@@ -143,7 +159,7 @@ export function Bookkeeping() {
                 onClick={() => setIsEditingBudget(true)}
                 className="text-xl font-black flex items-center justify-center cursor-pointer gap-1.5 active:scale-95 transition-transform"
               >
-                {budgetCurrency === 'JPY' ? '¥' : '$'}{initialBudget.toLocaleString()}
+                {displayCurrency === 'JPY' ? '¥' : '$'}{Math.round(convertedBudget).toLocaleString()}
                 <Edit3 className="w-4 h-4 text-emerald-300" />
               </div>
             )}
@@ -151,7 +167,7 @@ export function Bookkeeping() {
           <div className="w-1 h-12 rounded-full bg-emerald-400/50 mx-2"></div>
           <div className="flex-1 text-center">
              <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-widest mb-1 mt-1">已支出</p>
-             <div className="text-xl font-black">{budgetCurrency === 'JPY' ? '¥' : '$'}{Math.round(totalSpent).toLocaleString()}</div>
+             <div className="text-xl font-black">{displayCurrency === 'JPY' ? '¥' : '$'}{Math.round(totalSpent).toLocaleString()}</div>
           </div>
         </div>
       </div>

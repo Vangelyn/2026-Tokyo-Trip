@@ -16,7 +16,7 @@ export function Members() {
   useEffect(() => {
     if (!tripId || !user) return;
     
-    getDoc(doc(db, 'trips', tripId)).then(async docSnap => {
+    const unsubscribeTrip = onSnapshot(doc(db, 'trips', tripId), async (docSnap) => {
       if(docSnap.exists()) {
          const t = docSnap.data();
          setTrip(t);
@@ -24,7 +24,6 @@ export function Members() {
          // Fetch user profiles for memberIds
          if (t.memberIds && t.memberIds.length > 0) {
             try {
-              // Note: We changed users rules to allow get if isAuth(), so this works.
               const usersCache: any[] = [];
               for (const uid of t.memberIds) {
                  const uSnap = await getDoc(doc(db, 'users', uid));
@@ -40,6 +39,8 @@ export function Members() {
       }
       setLoading(false);
     });
+
+    return () => unsubscribeTrip();
   }, [tripId, user]);
 
   const handleShare = () => {
