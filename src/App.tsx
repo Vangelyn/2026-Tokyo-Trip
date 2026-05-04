@@ -107,12 +107,13 @@ function Login() {
 
   return (
     <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-yellow-50 via-white to-red-50 px-6">
-      <div className="w-24 h-24 bg-white rounded-[2rem] shadow-[0_10px_30px_rgba(255,50,50,0.15)] flex items-center justify-center mb-8 border-4 border-red-500 relative overflow-hidden">
-        <div className="absolute top-0 w-full h-1/2 bg-red-500"></div>
-        <div className="absolute top-1/2 -mt-1 w-full h-2 bg-gray-900 border-y-2 border-white"></div>
-        <div className="absolute top-1/2 left-1/2 -ml-3 -mt-3 w-6 h-6 bg-white rounded-full border-4 border-gray-900 z-10"></div>
+      <div className="w-32 h-32 mb-8 relative rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
+        <img src="/icon.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <div className="absolute inset-0 flex items-center justify-center -z-10 bg-yellow-50 text-gray-400 text-xs text-center px-4 font-bold">
+          圖示載入中<br/>(或請上傳 icon.png)
+        </div>
       </div>
-      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2">PokeTrips</h1>
+      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2">Woong的旅程</h1>
       <p className="text-gray-500 mb-10 text-center font-medium">Let's Go! 展開你的偉大冒險</p>
       
       <button 

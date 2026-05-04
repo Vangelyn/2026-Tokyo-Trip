@@ -1,5 +1,5 @@
 {
-  "name": "Tokyo Travel Pal - 東京旅遊夥伴",
+  "name": "Woong的旅程",
   "description": "專為東京旅行設計的 iPhone 風格規劃應用，包含行程分享、預算帳本及匯率轉換功能。",
   "requestFramePermissions": [
     "geolocation"
