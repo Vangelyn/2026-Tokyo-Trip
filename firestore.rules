@@ -17,18 +17,19 @@ service cloud.firestore {
     // User Profile Validation
     function isValidUser(data) {
       return data.keys().hasAll(['email', 'createdAt'])
-        && data.keys().size() <= 3
+        && data.keys().size() <= 4
         && data.email is string && data.email.size() <= 256
         && (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100)
+        && (data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 500)
         && data.createdAt is number;
     }
 
     match /users/{userId} {
-      allow get: if isAuth() && isValidId(userId) && request.auth.uid == userId;
+      allow get: if isAuth() && isValidId(userId);
       allow list: if isAuth() && resource.data.email == request.auth.token.email; // Only query own
       allow create: if isAuth() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming());
       allow update: if isAuth() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming())
-        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email']);
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL']);
     }
 
     // Trip Validation
@@ -75,10 +76,11 @@ service cloud.firestore {
       // Member Budgets
       function isValidTripMember(data) {
         return data.keys().hasAll(['userId', 'role', 'joinedAt'])
-          && data.keys().size() <= 4
+          && data.keys().size() <= 5
           && data.userId is string && data.userId.size() <= 128
           && data.role is string && data.role.size() <= 20
           && (data.get('initialBudget', 0) is number)
+          && (data.get('currency', '') is string && data.get('currency', '').size() <= 10)
           && data.joinedAt is number;
       }
 
@@ -96,18 +98,21 @@ service cloud.firestore {
           && incoming().userId == existing().userId
           && incoming().role == existing().role
           && incoming().joinedAt == existing().joinedAt
-          && incoming().diff(existing()).affectedKeys().hasOnly(['initialBudget']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['initialBudget', 'currency']);
       }
 
       // Itinerary Items
       function isValidItineraryItem(data) {
         return data.keys().hasAll(['title', 'date', 'creatorId', 'createdAt'])
-          && data.keys().size() <= 7
+          && data.keys().size() <= 10
           && data.title is string && data.title.size() <= 150
           && data.date is string && data.date.size() <= 30
           && (data.get('startTime', '') is string && data.get('startTime', '').size() <= 10)
           && (data.get('location', '') is string && data.get('location', '').size() <= 200)
           && (data.get('cost', 0) is number)
+          && (data.get('category', '') is string && data.get('category', '').size() <= 50)
+          && (data.get('notes', '') is string && data.get('notes', '').size() <= 500)
+          && (data.get('editorUid', '') is string && data.get('editorUid', '').size() <= 128)
           && data.creatorId is string && data.creatorId.size() <= 128
           && data.createdAt is number;
       }
@@ -120,7 +125,7 @@ service cloud.firestore {
         allow update: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId)
           && isValidItineraryItem(incoming())
           && incoming().creatorId == existing().creatorId
-          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'date', 'startTime', 'location', 'cost']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'date', 'startTime', 'location', 'cost', 'category', 'notes', 'editorUid']);
         allow delete: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId);
       }
 
@@ -151,10 +156,11 @@ service cloud.firestore {
       // Packing List
       function isValidPackingItem(data) {
         return data.keys().hasAll(['category', 'name', 'checked', 'userId', 'createdAt'])
-          && data.keys().size() <= 5
+          && data.keys().size() <= 6
           && data.category is string && data.category.size() <= 50
           && data.name is string && data.name.size() <= 150
           && data.checked is bool
+          && (data.get('quantity', 0) is number)
           && data.userId is string && data.userId.size() <= 128
           && data.createdAt is number;
       }
@@ -165,7 +171,7 @@ service cloud.firestore {
           && isValidPackingItem(incoming());
         allow update: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId)
           && isValidPackingItem(incoming())
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'checked']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'checked', 'quantity']);
         allow delete: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId);
       }
     }
