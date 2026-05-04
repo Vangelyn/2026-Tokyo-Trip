@@ -108,7 +108,7 @@ function Login() {
   return (
     <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-yellow-50 via-white to-red-50 px-6">
       <div className="w-32 h-32 mb-8 relative rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
-        <img src="/icon.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <img src="/icon.png?v=2" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         <div className="absolute inset-0 flex items-center justify-center -z-10 bg-yellow-50 text-gray-400 text-xs text-center px-4 font-bold">
           圖示載入中<br/>(或請上傳 icon.png)
         </div>
