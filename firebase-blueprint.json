@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Trip": {
+      "title": "Trip",
+      "description": "A travel trip",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "ownerId", "createdAt", "updatedAt"]
+    },
+    "TripMember": {
+      "title": "TripMember",
+      "description": "A member of a trip, including budget settings.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "editor"] },
+        "initialBudget": { "type": "number" },
+        "joinedAt": { "type": "number" }
+      },
+      "required": ["userId", "role", "joinedAt"]
+    },
+    "ItineraryItem": {
+      "title": "ItineraryItem",
+      "description": "A planned destination or activity.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "location": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "date", "creatorId", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Record of money spent.",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "paidBy": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["amount", "currency", "date", "paidBy", "createdAt"]
+    },
+    "PackingItem": {
+      "title": "PackingItem",
+      "description": "An item to pack.",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "name": { "type": "string" },
+        "checked": { "type": "boolean" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["category", "name", "checked", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/Trip" },
+      "description": "Travel trips"
+    },
+    "/trips/{tripId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/TripMember" },
+      "description": "Members of a trip. The document ID should match the userId."
+    },
+    "/trips/{tripId}/itinerary/{itemId}": {
+      "schema": { "$ref": "#/entities/ItineraryItem" },
+      "description": "Itinerary items for a trip"
+    },
+    "/trips/{tripId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Expenses for a trip"
+    },
+    "/trips/{tripId}/packing/{itemId}": {
+      "schema": { "$ref": "#/entities/PackingItem" },
+      "description": "Packing list items for a trip"
+    }
+  }
+}
