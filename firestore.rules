@@ -45,7 +45,7 @@ service cloud.firestore {
     }
 
     match /trips/{tripId} {
-      allow get: if isAuth() && isValidId(tripId) && request.auth.uid in resource.data.memberIds;
+      allow get: if isAuth() && isValidId(tripId);
       allow list: if isAuth() && request.auth.uid in resource.data.memberIds;
       
       allow create: if isAuth() && isValidId(tripId) && isValidTrip(incoming())
@@ -53,11 +53,16 @@ service cloud.firestore {
         && request.auth.uid in incoming().memberIds;
         
       allow update: if isAuth() && isValidId(tripId) && isValidTrip(incoming())
-        && request.auth.uid in existing().memberIds
         && incoming().ownerId == existing().ownerId
         && (
-            (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt'])) ||
-            (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) && request.auth.uid == existing().ownerId)
+            (request.auth.uid in existing().memberIds && (
+               (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt'])) ||
+               (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) && request.auth.uid == existing().ownerId)
+            )) ||
+            (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) 
+             && request.auth.uid in incoming().memberIds 
+             && incoming().memberIds.hasAll(existing().memberIds) 
+             && incoming().memberIds.size() == existing().memberIds.size() + 1)
         );
         
       allow delete: if isAuth() && isValidId(tripId) && request.auth.uid == existing().ownerId;
@@ -81,9 +86,10 @@ service cloud.firestore {
         allow get: if isAuth() && isValidId(tripId) && isValidId(memberId) && canAccessSub(tripId);
         allow list: if isAuth() && isValidId(tripId) && canAccessSub(tripId); // Subcollection list check using get on parent
         
-        allow create: if isAuth() && isValidId(tripId) && isValidId(memberId) && canAccessSub(tripId)
+        allow create: if isAuth() && isValidId(tripId) && isValidId(memberId) 
           && isValidTripMember(incoming())
-          && memberId == incoming().userId;
+          && memberId == incoming().userId
+          && memberId == request.auth.uid;
           
         allow update: if isAuth() && isValidId(tripId) && isValidId(memberId) && canAccessSub(tripId)
           && isValidTripMember(incoming())

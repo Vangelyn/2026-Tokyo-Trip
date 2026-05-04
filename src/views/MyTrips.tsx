@@ -65,6 +65,30 @@ export function MyTrips() {
         initialBudget: 50000,
         joinedAt: Date.now()
       });
+
+      const DEFAULT_ITINERARY = [
+        { date: '2026-05-11', title: '桃園機場 (TPE) 出發', startTime: '09:00', location: '桃園國際機場' },
+        { date: '2026-05-11', title: '抵達東京成田機場 (NRT)', startTime: '13:30', location: '成田國際機場' },
+        { date: '2026-05-11', title: '飯店 Check-in & 附近晚餐', startTime: '16:00', location: '東京' },
+        { date: '2026-05-12', title: '淺草寺、雷門參拜', startTime: '09:30', location: '淺草寺' },
+        { date: '2026-05-12', title: '晴空塔觀景 & 商場購物', startTime: '14:00', location: '東京晴空塔' },
+        { date: '2026-05-13', title: '寶可夢咖啡廳 / 寶可夢中心', startTime: '11:00', location: 'Pokemon Center Tokyo DX' },
+        { date: '2026-05-13', title: '秋葉原動漫電器街', startTime: '14:00', location: '秋葉原' },
+        { date: '2026-05-14', title: '明治神宮 & 原宿商圈', startTime: '09:30', location: '明治神宮' },
+        { date: '2026-05-14', title: '澀谷十字路口 & 晚餐', startTime: '16:00', location: '澀谷' },
+        { date: '2026-05-15', title: '東京迪士尼樂園 / 海洋', startTime: '08:30', location: '東京迪士尼度假區' },
+        { date: '2026-05-16', title: '購買伴手禮', startTime: '09:30', location: '東京車站' },
+        { date: '2026-05-16', title: '前往機場準備搭機', startTime: '13:00', location: '成田國際機場' },
+        { date: '2026-05-16', title: '抵達桃園機場', startTime: '18:00', location: '桃園國際機場' }
+      ];
+
+      for (const item of DEFAULT_ITINERARY) {
+        await addDoc(collection(db, `trips/${tripRef.id}/itinerary`), {
+            ...item,
+            creatorId: user.uid,
+            createdAt: Date.now()
+        });
+      }
       
       navigate(`/trips/${tripRef.id}`);
     } catch (error) {

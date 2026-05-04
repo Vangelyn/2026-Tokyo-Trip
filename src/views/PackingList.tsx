@@ -15,16 +15,78 @@ interface PackingItem {
 }
 
 const DEFAULT_ITEMS = [
-  { category: '重要物品', name: '護照/日鈔/交通卡' },
-  { category: '重要物品', name: '台灣錢包/信用卡' },
-  { category: '3C用品', name: '行動電源/充電線' },
-  { category: '3C用品', name: '網路(ESIM)' },
-  { category: '衣物類', name: '上衣/下身' },
-  { category: '衣物類', name: '內衣褲/襪子' },
-  { category: '換季保暖', name: '薄外套' },
-  { category: '個人用品', name: '個人藥品(腸胃藥/百服寧)' },
-  { category: '個人用品', name: '隱形眼鏡/眼鏡' },
-  { category: '個人用品', name: '化妝保養品' }
+  // 隨身行李/背包
+  { category: '重要物品類', name: '網路(ESIM)' },
+  { category: '重要物品類', name: '保險(旅平/不便險)' },
+  { category: '重要物品類', name: '住宿預訂確認' },
+  { category: '重要物品類', name: '餐廳預訂確認' },
+  { category: '重要物品類', name: '行李箱租借' },
+  { category: '重要物品類', name: '交通票確認' },
+  { category: '重要物品類', name: 'VJW-VISIT JAPAN WEB' },
+  { category: '重要物品類', name: '護照/日鈔/交通卡' },
+  { category: '重要物品類', name: '行李秤' },
+  { category: '重要物品類', name: '台灣錢包/悠遊卡' },
+  { category: '重要物品類', name: '酒精擦' },
+  { category: '重要物品類', name: '信用卡' },
+  
+  { category: '隨身小物', name: '護唇/護手霜' },
+  { category: '隨身小物', name: 'OK繃/曼秀雷敦' },
+  { category: '隨身小物', name: '止痛/鼻炎/腸胃藥' },
+  { category: '隨身小物', name: '口罩' },
+  { category: '隨身小物', name: '墨鏡/隱形眼鏡/人工淚液' },
+  { category: '隨身小物', name: '雨傘/雨衣' },
+  { category: '隨身小物', name: '充氣頸枕' },
+  { category: '隨身小物', name: '筆' },
+  
+  { category: '環保類', name: '水壺(飲料提袋)' },
+  { category: '環保類', name: '環保袋' },
+  
+  // 托運行李
+  { category: '3C類', name: '行動電源' },
+  { category: '3C類', name: 'TR相機+電池(Duma包)' },
+  { category: '3C類', name: 'AirTag' },
+  { category: '3C類', name: '手機' },
+  { category: '3C類', name: 'AppleWatch' },
+  { category: '3C類', name: '充電線材' },
+  
+  { category: '衣物類', name: '上衣' },
+  { category: '衣物類', name: '下身' },
+  { category: '衣物類', name: '內衣褲' },
+  { category: '衣物類', name: '襪子' },
+  { category: '衣物類', name: '備用鞋' },
+  { category: '衣物類', name: '外出小包' },
+  
+  { category: '換季保暖衣物類', name: '發熱衣' },
+  { category: '換季保暖衣物類', name: '防風外套' },
+  { category: '換季保暖衣物類', name: '羽絨外套' },
+  { category: '換季保暖衣物類', name: '圍巾' },
+  { category: '換季保暖衣物類', name: '帽子' },
+  
+  { category: '洗漱保養類', name: '牙刷' },
+  { category: '洗漱保養類', name: '洗漱包(護色洗)' },
+  { category: '洗漱保養類', name: '棉花棒' },
+  { category: '洗漱保養類', name: '卸妝棉' },
+  { category: '洗漱保養類', name: '擦臉毛巾' },
+  
+  { category: '外出類', name: '防曬乳' },
+  { category: '外出類', name: '防蚊液' },
+  { category: '外出類', name: '寶可夢娃娃' },
+  { category: '外出類', name: '寶可夢樂園相關' },
+  
+  { category: '化妝類', name: '粉底&刷' },
+  { category: '化妝類', name: '眼影盤&刷x2' },
+  { category: '化妝類', name: '雙眼皮貼' },
+  { category: '化妝類', name: '腮紅&刷' },
+  { category: '化妝類', name: '鼻影' },
+  { category: '化妝類', name: '眼線筆' },
+  { category: '化妝類', name: '口紅' },
+  { category: '化妝類', name: '定妝粉' },
+  { category: '化妝類', name: '假睫毛' },
+  
+  { category: '旅行備用小物', name: '摺疊式輕便旅行袋' },
+  { category: '旅行備用小物', name: '塑膠袋' },
+  { category: '旅行備用小物', name: '衛生紙' },
+  { category: '旅行備用小物', name: '濕紙巾' }
 ];
 
 export function PackingList() {
@@ -189,7 +251,7 @@ export function PackingList() {
                     onChange={e => setNewItemCat(e.target.value)}
                     className="w-full bg-gray-50 p-3 rounded-xl mt-1 border border-gray-100 outline-none"
                   >
-                     {['重要物品', '3C用品', '衣物類', '個人用品', '其他'].map(c => <option key={c} value={c}>{c}</option>)}
+                     {['重要物品類', '隨身小物', '環保類', '3C類', '衣物類', '換季保暖衣物類', '洗漱保養類', '外出類', '化妝類', '旅行備用小物', '其他'].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                </div>
                <div>

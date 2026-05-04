@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { ArrowDownUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -26,12 +26,12 @@ export function CurrencyConverter() {
     }
   }, [jpy, twd, rate, base]);
 
-  const handleJpyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleJpyChange = (e: ChangeEvent<HTMLInputElement>) => {
     setBase('JPY');
     setJpy(e.target.value);
   };
 
-  const handleTwdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTwdChange = (e: ChangeEvent<HTMLInputElement>) => {
     setBase('TWD');
     setTwd(e.target.value);
   };

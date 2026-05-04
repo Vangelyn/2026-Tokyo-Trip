@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useContext } from 'react';
-import { doc, getDoc, collection, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, collection, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
 import { ChevronLeft, Info, Calendar, Users, Wallet, CheckSquare, Map, Share2, Copy } from 'lucide-react';
@@ -21,11 +21,35 @@ export function TripDetails() {
         const tripRef = doc(db, 'trips', tripId);
         const tripDoc = await getDoc(tripRef);
         if (tripDoc.exists()) {
-          setTrip({ id: tripDoc.id, ...tripDoc.data() });
-        } else {
-          // If the user has a share link but is not a member, we need a special logic to join
-          // In this simple version, they must be added before they can get it.
-          // Let's implement join code next.
+          const tripData = tripDoc.data();
+          
+          // Check for join parameter
+          const searchParams = new URLSearchParams(window.location.search);
+          if (searchParams.get('join') === 'true') {
+            if (!tripData.memberIds.includes(user.uid)) {
+              // Join the trip
+              await updateDoc(tripRef, {
+                memberIds: arrayUnion(user.uid),
+                updatedAt: Date.now()
+              });
+              // Create the member document
+              await setDoc(doc(db, `trips/${tripId}/members/${user.uid}`), {
+                userId: user.uid,
+                role: 'editor',
+                initialBudget: 50000,
+                joinedAt: Date.now()
+              });
+              tripData.memberIds.push(user.uid);
+              alert('成功加入旅程！');
+              navigate(`/trips/${tripId}`, { replace: true });
+            }
+          }
+
+          if (tripData.memberIds.includes(user.uid)) {
+            setTrip({ id: tripDoc.id, ...tripData });
+          } else {
+            setTrip(null);
+          }
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, `trips/${tripId}`);
@@ -34,7 +58,7 @@ export function TripDetails() {
       }
     };
     fetchTrip();
-  }, [tripId, user]);
+  }, [tripId, user, navigate]);
 
   const joinTrip = async () => {
      if(!user || !tripId) return;
