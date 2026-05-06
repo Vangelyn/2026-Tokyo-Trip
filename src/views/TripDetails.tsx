@@ -3,7 +3,7 @@ import { useEffect, useState, useContext, useMemo, useRef } from 'react';
 import { doc, getDoc, collection, updateDoc, arrayUnion, setDoc, query, orderBy, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
-import { ChevronLeft, Calendar, Share2, MapPin, Clock, Plus, Edit3, Trash2, Map, Users, Wallet, Backpack, Sun, CloudRain, Thermometer } from 'lucide-react';
+import { ChevronLeft, Calendar, Share2, MapPin, Clock, Plus, Edit3, Trash2, Map, Users, Wallet, Backpack, Sun, CloudRain, Thermometer, Globe, CloudOff, Cloud, CloudSun, CloudLightning, Snowflake, Wind } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseISO, differenceInDays, format, addDays } from 'date-fns';
 import { motion, useMotionValue, useTransform } from 'motion/react';
@@ -193,40 +193,28 @@ export function TripDetails() {
     
     const fetchWeather = async () => {
       try {
-        // Step 1: Geocoding (simplified for Japan/cities)
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trip.weatherRegion)}&count=1&language=en&format=json`);
-        const geoData = await geoRes.json();
-        
-        if (geoData.results && geoData.results[0]) {
-          const { latitude, longitude } = geoData.results[0];
-          const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
-          const weatherData = await weatherRes.json();
-          
-          // Match selectedDate to daily index
-          const dateIdx = weatherData.daily.time.indexOf(selectedDate);
-          if (dateIdx !== -1) {
-             setWeather({
-                code: weatherData.daily.weathercode[dateIdx],
-                max: weatherData.daily.temperature_2m_max[dateIdx],
-                min: weatherData.daily.temperature_2m_min[dateIdx]
-             });
-          } else {
-             setWeather(null);
-          }
+        const res = await axios.get(`/api/weather?region=${encodeURIComponent(trip.weatherRegion)}&date=${selectedDate}`);
+        if (res.data && typeof res.data.code === 'number') {
+          setWeather(res.data);
+        } else {
+          setWeather(null);
         }
       } catch (e) {
         console.error('Weather fetch error:', e);
+        setWeather(null);
       }
     };
     fetchWeather();
   }, [trip?.weatherRegion, selectedDate]);
 
   const getWeatherInfo = (code: number) => {
-     if (code <= 3) return { label: '晴朗', icon: Sun, color: 'text-amber-500' };
-     if (code <= 48) return { label: '多雲/霧', icon: CloudRain, color: 'text-gray-400' };
-     if (code <= 67) return { label: '陣雨', icon: CloudRain, color: 'text-sky-500' };
-     if (code <= 77) return { label: '下雪', icon: CloudRain, color: 'text-blue-200' };
-     return { label: '雷雨', icon: CloudRain, color: 'text-indigo-500' };
+     if (code === 0) return { label: '晴朗', icon: Sun, color: 'text-amber-500' };
+     if (code <= 3) return { label: '晴到多雲', icon: CloudSun, color: 'text-amber-400' };
+     if (code <= 48) return { label: '多雲/霧', icon: Cloud, color: 'text-gray-400' };
+     if (code <= 67) return { label: '陣雨', icon: CloudRain, color: 'text-sky-400' };
+     if (code <= 77) return { label: '雨夾雪', icon: Snowflake, color: 'text-blue-200' };
+     if (code <= 82) return { label: '雷雨', icon: CloudLightning, color: 'text-indigo-500' };
+     return { label: '強風', icon: Wind, color: 'text-gray-500' };
   };
 
   const daysLeft = useMemo(() => {
@@ -468,12 +456,12 @@ export function TripDetails() {
                    </div>
                  ) : (
                    <div className="w-16 h-16 bg-gray-50 rounded-3xl flex items-center justify-center border-2 border-gray-100 text-gray-200">
-                      <Sun className="w-9 h-9" />
+                      <CloudOff className="w-9 h-9" />
                    </div>
                  )}
                  <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base font-black text-gray-900">{weather ? getWeatherInfo(weather.code).label : t('TripDetails.SetRegionForWeather')}</span>
+                      <span className="text-base font-black text-gray-900">{weather ? getWeatherInfo(weather.code).label : (trip?.weatherRegion ? '天氣資訊暫缺' : t('TripDetails.SetRegionForWeather'))}</span>
                     </div>
                     <div className="flex items-center text-xs font-black text-sky-500 gap-3">
                       {weather && <span>H: {Math.round(weather.max)}° / L: {Math.round(weather.min)}°</span>}
