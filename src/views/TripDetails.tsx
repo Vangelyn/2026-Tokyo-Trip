@@ -121,18 +121,43 @@ export function TripDetails() {
             }
             setMembersMap(map);
 
+            // Subscriptions
+            const subs: (() => void)[] = [];
+
             // Listen to itinerary
             const q = query(collection(db, `trips/${tripId}/itinerary`), orderBy('date'), orderBy('startTime'));
-            sub = onSnapshot(q, (snapshot) => {
+            const itinerarySub = onSnapshot(q, (snapshot) => {
               const fetched: ItineraryItem[] = [];
               snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() } as ItineraryItem));
               setItems(fetched);
+            }, (err) => {
+              console.error("Itinerary query error (might need index):", err);
+              // Fallback: fetch without order and sort client-side if it's an index/permission error
+              const fallbackQ = query(collection(db, `trips/${tripId}/itinerary`));
+              const fSub = onSnapshot(fallbackQ, (snapshot) => {
+                const fetched: ItineraryItem[] = [];
+                snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() } as ItineraryItem));
+                fetched.sort((a,b) => {
+                  if(a.date !== b.date) return a.date.localeCompare(b.date);
+                  return (a.startTime || '').localeCompare(b.startTime || '');
+                });
+                setItems(fetched);
+              }, (fErr) => {
+                handleFirestoreError(fErr, OperationType.LIST, `trips/${tripId}/itinerary`);
+              });
+              subs.push(fSub);
             });
+            subs.push(itinerarySub);
 
             // Listen to Trip changes for weather region etc
-            onSnapshot(tripRef, (snap) => {
+            const tripSub = onSnapshot(tripRef, (snap) => {
                if(snap.exists()) setTrip({ id: snap.id, ...snap.data() });
+            }, (err) => {
+               handleFirestoreError(err, OperationType.GET, `trips/${tripId}`);
             });
+            subs.push(tripSub);
+
+            (window as any)._tripSubscriptions = subs;
           } else {
              setTrip(null);
           }
@@ -144,7 +169,13 @@ export function TripDetails() {
       }
     };
     fetchTrip();
-    return () => { if (sub) sub(); };
+    return () => { 
+      const subs = (window as any)._tripSubscriptions;
+      if (subs) {
+        subs.forEach((unsub: any) => unsub());
+        delete (window as any)._tripSubscriptions;
+      }
+    };
   }, [tripId, user, navigate]);
 
   // Fetch weather when region or date changes
@@ -322,7 +353,7 @@ export function TripDetails() {
       {/* Animated Header */}
       <motion.div 
         style={{ height: headerHeight, borderBottomLeftRadius: headerRadius, borderBottomRightRadius: headerRadius }}
-        className="bg-red-500 text-white shadow-[0_15px_40px_-20px_rgba(239,68,68,0.6)] relative z-30 shrink-0 overflow-hidden"
+        className="fixed top-0 left-0 right-0 bg-red-500 text-white shadow-[0_15px_40px_-20px_rgba(239,68,68,0.6)] z-40 overflow-hidden"
       >
         {/* Navigation Bar */}
         <div className="absolute top-0 left-0 right-0 h-20 flex items-center justify-between px-6 z-20">
@@ -386,9 +417,12 @@ export function TripDetails() {
         onScroll={(e) => scrollY.set(e.currentTarget.scrollTop)}
         className="flex-1 overflow-y-auto hide-scrollbar pb-32"
       >
+        {/* Spacer for Header */}
+        <div className="h-[280px]" />
+
         {/* Date Picker (Horizontal) */}
-        <div className="px-6 pt-16 pb-10 min-h-[160px]">
-           <div className="flex overflow-x-auto gap-5 pb-6 snap-x hide-scrollbar px-2 pt-4">
+        <div className="px-6 py-12 min-h-[180px] overflow-visible">
+           <div className="flex overflow-x-auto gap-5 pb-8 snap-x hide-scrollbar px-2 pt-10 overflow-y-visible">
               {dates.map((date) => {
                  const isActive = date === selectedDate;
                  const [yyyy, mm, dd] = date.split('-');

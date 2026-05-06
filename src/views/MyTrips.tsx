@@ -68,16 +68,20 @@ export function MyTrips() {
 
     try {
       if (isOwner) {
-        // If owner, we delete the trip document (cascading delete isn't automatic in Firestore, 
-        // but for a simple app we at least delete the main document to hide it)
         await deleteDoc(doc(db, 'trips', tripId));
       } else {
-        // Just remove the member
+        const { writeBatch } = await import('firebase/firestore');
+        const batch = writeBatch(db);
         const tripRef = doc(db, 'trips', tripId);
-        await updateDoc(tripRef, {
-          memberIds: arrayRemove(user.uid)
+        
+        batch.update(tripRef, {
+          memberIds: arrayRemove(user.uid),
+          updatedAt: Date.now()
         });
-        await deleteDoc(doc(db, `trips/${tripId}/members`, user.uid));
+        
+        batch.delete(doc(db, `trips/${tripId}/members`, user.uid));
+        
+        await batch.commit();
       }
       // UI will auto-update via onSnapshot
     } catch (error) {

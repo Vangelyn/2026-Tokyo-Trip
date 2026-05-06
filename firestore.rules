@@ -60,10 +60,15 @@ service cloud.firestore {
       allow update: if isAuth() && isValidId(tripId) && isValidTrip(incoming())
         && incoming().ownerId == existing().ownerId
         && (
-            (request.auth.uid in existing().memberIds && (
-               (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt', 'totalBudget', 'budgetCurrency', 'weatherRegion'])) ||
-               (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) && request.auth.uid == existing().ownerId)
+            // Option 1: Owner updates almost anything
+            (request.auth.uid == existing().ownerId && (
+               (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt', 'totalBudget', 'budgetCurrency', 'weatherRegion', 'memberIds']))
             )) ||
+            // Option 2: Member removes themselves (Leave Trip)
+            (existing().memberIds.hasAny([request.auth.uid]) && 
+             !incoming().memberIds.hasAny([request.auth.uid]) &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt'])) ||
+            // Option 3: New person joins via link
             (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) 
              && request.auth.uid in incoming().memberIds 
              && incoming().memberIds.hasAll(existing().memberIds) 
@@ -90,7 +95,7 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow get: if isAuth() && isValidId(tripId) && isValidId(memberId) && canAccessSub(tripId);
-        allow list: if isAuth() && isValidId(tripId) && canAccessSub(tripId); // Subcollection list check using get on parent
+        allow list: if isAuth() && isValidId(tripId) && canAccessSub(tripId);
         
         allow create: if isAuth() && isValidId(tripId) && isValidId(memberId) 
           && isValidTripMember(incoming())
@@ -99,10 +104,14 @@ service cloud.firestore {
           
         allow update: if isAuth() && isValidId(tripId) && isValidId(memberId) && canAccessSub(tripId)
           && isValidTripMember(incoming())
+          && memberId == existing().userId
           && incoming().userId == existing().userId
           && incoming().role == existing().role
           && incoming().joinedAt == existing().joinedAt
           && incoming().diff(existing()).affectedKeys().hasOnly(['initialBudget', 'currency']);
+
+        allow delete: if isAuth() && isValidId(tripId) && isValidId(memberId) 
+          && (memberId == request.auth.uid || get(/databases/$(database)/documents/trips/$(tripId)).data.ownerId == request.auth.uid);
       }
 
       // Itinerary Items

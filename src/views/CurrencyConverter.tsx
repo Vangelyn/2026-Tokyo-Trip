@@ -51,7 +51,7 @@ export function CurrencyConverter() {
         setForeignAmount('');
       }
     }
-  }, [foreignAmount, twdAmount, rate, base]); // Removed targetCurrency to prevent "jumping" when choosing币别 unless values are present
+  }, [foreignAmount, twdAmount, rate, base, targetCurrency]); 
 
   const handleForeignChange = (e: ChangeEvent<HTMLInputElement>) => {
     setBase('FOREIGN');
