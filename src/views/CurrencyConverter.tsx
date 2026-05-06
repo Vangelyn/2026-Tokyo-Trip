@@ -10,20 +10,27 @@ export function CurrencyConverter() {
   const [twdAmount, setTwdAmount] = useState('');
   const [rates, setRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [base, setBase] = useState<'FOREIGN' | 'TWD'>('FOREIGN');
   const [showSelector, setShowSelector] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const fetchRates = async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch('/api/rates');
+        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
         if (data.rates) {
           setRates(data.rates);
+        } else {
+          throw new Error('Invalid data format');
         }
       } catch (error) {
         console.error('Failed to fetch rates:', error);
+        setError('無法取得匯率資料，請稍後再試');
       } finally {
         setLoading(false);
       }
@@ -72,8 +79,33 @@ export function CurrencyConverter() {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-          <p className="text-gray-400 font-medium tracking-widest">{t('Common.Loading')}</p>
+          <div className="relative">
+            <Loader2 className="w-12 h-12 text-sky-500 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Globe className="w-4 h-4 text-sky-200" />
+            </div>
+          </div>
+          <p className="text-gray-400 font-black tracking-widest text-xs uppercase animate-pulse">Fetching Rates...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50 p-6">
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 text-center max-w-xs">
+          <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Globe className="w-8 h-8 text-red-400" />
+          </div>
+          <h3 className="font-black text-gray-900 mb-2">抱歉！載入失敗</h3>
+          <p className="text-xs font-bold text-gray-400 mb-6">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-3 bg-gray-900 text-white rounded-xl font-black text-sm active:scale-95 transition-transform"
+          >
+            點此重試
+          </button>
         </div>
       </div>
     );
@@ -142,13 +174,13 @@ export function CurrencyConverter() {
 
       {/* Currency Selector Modal */}
       {showSelector && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setShowSelector(false)} />
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[80vh] animate-in slide-in-from-bottom duration-500">
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-md transition-all duration-500" onClick={() => setShowSelector(false)} />
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] relative z-10 overflow-hidden flex flex-col max-h-[80vh] animate-in slide-in-from-bottom duration-500 will-change-transform">
             <div className="p-8 pb-4">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-gray-900">{t('Exchange.SelectCurrency')}</h2>
-                <button onClick={() => setShowSelector(false)} className="text-gray-400 hover:text-gray-600 font-black">CLOSE</button>
+                <h2 className="text-2xl font-black text-gray-900 tracking-tight">{t('Exchange.SelectCurrency')}</h2>
+                <button onClick={() => setShowSelector(false)} className="w-10 h-10 flex items-center justify-center bg-gray-50 border border-gray-100 rounded-2xl text-gray-400 font-black hover:bg-gray-100 transition-colors">✕</button>
               </div>
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />

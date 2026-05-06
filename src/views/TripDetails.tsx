@@ -276,24 +276,29 @@ export function TripDetails() {
   };
 
   const openModal = (item?: ItineraryItem) => {
-    if (item) {
-      setEditingItem(item);
-      setFormTitle(item.title);
-      setFormDate(item.date);
-      setFormStartTime(item.startTime || '');
-      setFormLocation(item.location || '');
-      setFormCategory(item.category || '景點');
-      setFormNotes(item.notes || '');
-    } else {
-      setEditingItem(null);
-      setFormTitle('');
-      setFormDate(selectedDate || trip?.startDate || '');
-      setFormStartTime('09:00');
-      setFormLocation('');
-      setFormCategory('景點');
-      setFormNotes('');
+    try {
+      if (item) {
+        setEditingItem(item);
+        setFormTitle(item.title || '');
+        setFormDate(item.date || selectedDate || '');
+        setFormStartTime(item.startTime || '09:00');
+        setFormLocation(item.location || '');
+        setFormCategory(item.category || '景點');
+        setFormNotes(item.notes || '');
+      } else {
+        setEditingItem(null);
+        setFormTitle('');
+        setFormDate(selectedDate || trip?.startDate || new Date().toISOString().split('T')[0]);
+        setFormStartTime('09:00');
+        setFormLocation('');
+        setFormCategory('景點');
+        setFormNotes('');
+      }
+      setShowModal(true);
+    } catch (err) {
+      console.error("Open modal error:", err);
+      alert("載入編輯視窗時發生錯誤");
     }
-    setShowModal(true);
   };
 
   const handleSave = async () => {
@@ -421,8 +426,8 @@ export function TripDetails() {
         <div className="h-[280px]" />
 
         {/* Date Picker (Horizontal) */}
-        <div className="px-6 py-12 min-h-[180px] overflow-visible">
-           <div className="flex overflow-x-auto gap-5 pb-8 snap-x hide-scrollbar px-2 pt-10 overflow-y-visible">
+        <div className="px-6 pt-2 pb-10 min-h-[160px] overflow-visible">
+           <div className="flex overflow-x-auto gap-5 pb-8 snap-x hide-scrollbar px-2 pt-14 overflow-y-visible">
               {dates.map((date) => {
                  const isActive = date === selectedDate;
                  const [yyyy, mm, dd] = date.split('-');
@@ -582,7 +587,7 @@ export function TripDetails() {
       {selectedDate && (
          <button 
            onClick={() => openModal()} 
-           className="absolute bottom-28 right-6 w-16 h-16 bg-red-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(239,68,68,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+           className="fixed bottom-28 right-6 w-16 h-16 bg-red-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(239,68,68,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
          >
            <Plus className="w-8 h-8" strokeWidth={3} />
          </button>
@@ -649,11 +654,19 @@ export function TripDetails() {
 
       {/* Form Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl animate-in slide-in-from-bottom pb-safe max-h-[90vh] overflow-y-auto border-t-4 border-sky-400 text-gray-900">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-extrabold">{editingItem ? t('TripDetails.EditItem') : t('TripDetails.AddItem')}</h3>
-              <button className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full text-gray-400 font-bold" onClick={() => setShowModal(false)}>✕</button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center transition-all duration-300">
+          <div 
+            className="bg-white w-full max-w-md rounded-t-[2.5rem] sm:rounded-[3rem] p-8 shadow-[0_-20px_50px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom duration-500 pb-safe-offset-4 max-h-[85vh] overflow-y-auto border-t-8 border-sky-400 text-gray-900 will-change-transform"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-2xl font-black text-gray-900 tracking-tight">{editingItem ? t('TripDetails.EditItem') : t('TripDetails.AddItem')}</h3>
+              <button 
+                className="w-10 h-10 flex items-center justify-center bg-gray-50 border border-gray-100 rounded-2xl text-gray-400 font-black hover:bg-gray-100 transition-colors" 
+                onClick={() => setShowModal(false)}
+              >
+                ✕
+              </button>
             </div>
 
             <div className="space-y-4">
