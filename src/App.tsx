@@ -74,9 +74,14 @@ function MobileLayout() {
 
 function Login() {
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isInAppBrowser = /Line|FBAN|FBAV|Instagram|Twitter/i.test(navigator.userAgent);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
   const handleLogin = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -99,7 +104,15 @@ function Login() {
       }
     } catch (error: any) {
       console.error(error);
-      alert(`登入失敗: ${error.message || error}`);
+      if (error.code === 'auth/popup-blocked') {
+        setErrorMsg('彈窗被瀏覽器攔截，請允許彈窗後再試。');
+      } else if (error.code === 'auth/internal-error' && isSafari) {
+        setErrorMsg('Safari 存取限制，請嘗試關閉「防止跨網站追蹤」或使用 Chrome。');
+      } else if (error.message?.includes('missing initial state')) {
+        setErrorMsg('瀏覽器儲存空間發生錯誤，請嘗試在 Safari 設定中關閉「限制跨網站追蹤」。');
+      } else {
+        setErrorMsg(`登入失敗: ${error.message || '請再試一次'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -107,22 +120,43 @@ function Login() {
 
   return (
     <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-yellow-50 via-white to-red-50 px-6">
-      <div className="w-32 h-32 mb-8 relative rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
-        <img src="/icon.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-        <div className="absolute inset-0 flex items-center justify-center -z-10 bg-yellow-50 text-gray-400 text-xs text-center px-4 font-bold">
-          圖示載入中<br/>(或請上傳 icon.png)
+      {isInAppBrowser && (
+        <div className="w-full bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-2xl mb-8 text-sm font-bold animate-pulse">
+          ⚠️ 偵測到社群軟體內建瀏覽器。<br/>
+          Google 登入可能受限，請點擊右上角「...」選擇「在外部瀏覽器開啟」。
         </div>
+      )}
+
+      <div className="w-32 h-32 mb-8 relative rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
+        <img src="/logo.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png'; }} />
       </div>
-      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2">Woong的旅程</h1>
-      <p className="text-gray-500 mb-10 text-center font-medium">Let's Go! 展開你的偉大冒險</p>
+      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2 font-sans italic">Woong的旅程</h1>
+      <p className="text-gray-500 mb-10 text-center font-bold tracking-tight">Let's Go! 展開你的偉大冒險</p>
       
+      {errorMsg && (
+        <div className="w-full bg-white border-2 border-red-100 text-red-500 p-4 rounded-2xl mb-6 text-xs font-bold text-center shadow-sm">
+          {errorMsg}
+        </div>
+      )}
+
       <button 
         disabled={loading}
         onClick={handleLogin}
-        className="w-full bg-red-500 text-white rounded-full py-4 font-bold text-lg hover:bg-red-600 transition-all flex items-center justify-center gap-2 shadow-[0_8px_20px_-6px_rgba(239,68,68,0.6)] active:scale-95"
+        className="w-full bg-red-500 text-white rounded-2xl py-4 font-black text-lg hover:bg-red-600 transition-all flex items-center justify-center gap-3 shadow-[0_12px_30px_-10px_rgba(239,68,68,0.5)] active:translate-y-1 active:shadow-none"
       >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Google 帳號登入'}
+        {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : (
+          <>
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6 bg-white p-1 rounded-sm" alt="" />
+            Google 帳號登入
+          </>
+        )}
       </button>
+
+      {isSafari && (
+        <p className="mt-8 text-[10px] text-gray-400 font-bold max-w-[280px] text-center leading-relaxed">
+          * 若登入失敗，請前往 iOS 設定 → Safari → 關閉「防止跨網站追蹤」再回來重試。
+        </p>
+      )}
     </div>
   );
 }
