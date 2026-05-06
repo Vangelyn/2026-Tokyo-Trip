@@ -128,7 +128,7 @@ function Login() {
       )}
 
       <div className="w-32 h-32 mb-8 relative rounded-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.15)] bg-white border-4 border-white">
-        <img src="/logo.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png'; }} />
+        <img src="/logo.png" alt="Woong的旅程" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://raw.githubusercontent.com/Vangelyn/2026-Tokyo-Trip/main/public/icon.png'; }} />
       </div>
       <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2 font-sans italic">Woong的旅程</h1>
       <p className="text-gray-500 mb-10 text-center font-bold tracking-tight">Let's Go! 展開你的偉大冒險</p>
