@@ -17,32 +17,36 @@ service cloud.firestore {
     // User Profile Validation
     function isValidUser(data) {
       return data.keys().hasAll(['email', 'createdAt'])
-        && data.keys().size() <= 4
+        && data.keys().size() <= 8
         && data.email is string && data.email.size() <= 256
-        && (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100)
-        && (data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 500)
+        && (data.get('displayName', '') is string && data.get('displayName', '').size() <= 200)
+        && (data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 2000)
         && data.createdAt is number;
     }
 
     match /users/{userId} {
-      allow get: if isAuth() && isValidId(userId);
-      allow list: if isAuth() && resource.data.email == request.auth.token.email; // Only query own
-      allow create: if isAuth() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming());
-      allow update: if isAuth() && isValidId(userId) && request.auth.uid == userId && isValidUser(incoming())
-        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL']);
+      allow get: if isAuth(); // Allow reading any profile to show member names
+      allow list: if isAuth(); // Allow listing for joining trips
+      allow create: if isAuth() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isAuth() && request.auth.uid == userId && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt']);
     }
 
     // Trip Validation
     function isValidTrip(data) {
       return data.keys().hasAll(['title', 'ownerId', 'memberIds', 'createdAt', 'updatedAt'])
-        && data.keys().size() <= 7
+        && data.keys().size() <= 12
         && data.title is string && data.title.size() <= 100
         && (data.get('startDate', '') is string && data.get('startDate', '').size() <= 30)
         && (data.get('endDate', '') is string && data.get('endDate', '').size() <= 30)
         && data.ownerId is string && data.ownerId.size() <= 128
-        && data.memberIds is list && data.memberIds.size() <= 20 && data.memberIds[0] is string
+        && data.memberIds is list && data.memberIds.size() <= 20
+        && (data.memberIds.size() == 0 || data.memberIds[0] is string)
         && data.createdAt is number
-        && data.updatedAt is number;
+        && data.updatedAt is number
+        && (data.get('totalBudget', 0) is number)
+        && (data.get('budgetCurrency', 'TWD') is string)
+        && (data.get('weatherRegion', '') is string && data.get('weatherRegion', '').size() <= 100);
     }
 
     match /trips/{tripId} {
@@ -57,7 +61,7 @@ service cloud.firestore {
         && incoming().ownerId == existing().ownerId
         && (
             (request.auth.uid in existing().memberIds && (
-               (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt'])) ||
+               (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'startDate', 'endDate', 'updatedAt', 'totalBudget', 'budgetCurrency', 'weatherRegion'])) ||
                (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) && request.auth.uid == existing().ownerId)
             )) ||
             (incoming().diff(existing()).affectedKeys().hasOnly(['memberIds', 'updatedAt']) 

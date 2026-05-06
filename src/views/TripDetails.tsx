@@ -1,11 +1,12 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useEffect, useState, useContext, useMemo } from 'react';
+import { useEffect, useState, useContext, useMemo, useRef } from 'react';
 import { doc, getDoc, collection, updateDoc, arrayUnion, setDoc, query, orderBy, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
 import { ChevronLeft, Calendar, Share2, MapPin, Clock, Plus, Edit3, Trash2, Map, Users, Wallet, Backpack, Sun, CloudRain } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseISO, differenceInDays } from 'date-fns';
+import { motion, useMotionValue, useTransform } from 'motion/react';
 
 interface ItineraryItem {
   id: string;
@@ -20,11 +21,11 @@ interface ItineraryItem {
 }
 
 const CATEGORY_STYLES: Record<string, string> = {
-  '景點': 'bg-red-100 text-red-600 border-red-200',   // Pokeball red
-  '美食': 'bg-yellow-100 text-yellow-600 border-yellow-200', // Pikachu yellow
-  '交通': 'bg-blue-100 text-blue-600 border-blue-200',     // Squirtle blue
-  '住宿': 'bg-green-100 text-green-600 border-green-200',   // Bulbasaur green
-  '其他': 'bg-gray-100 text-gray-500 border-gray-200',
+  '景點': 'bg-red-50 text-red-600 border-red-100',
+  '美食': 'bg-yellow-50 text-yellow-600 border-yellow-100',
+  '交通': 'bg-blue-50 text-blue-600 border-blue-100',
+  '住宿': 'bg-green-50 text-green-600 border-green-100',
+  '其他': 'bg-gray-50 text-gray-500 border-gray-100',
 };
 
 export function TripDetails() {
@@ -32,11 +33,20 @@ export function TripDetails() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   
+  const scrollY = useMotionValue(0);
+
+  // Header Animation values
+  const headerHeight = useTransform(scrollY, [0, 100], [240, 100]);
+  const headerOpacity = useTransform(scrollY, [0, 60], [1, 0]);
+  const miniHeaderOpacity = useTransform(scrollY, [80, 120], [0, 1]);
+  const headerRadius = useTransform(scrollY, [0, 100], [48, 24]);
+
   const [loading, setLoading] = useState(true);
   const [trip, setTrip] = useState<any>(null);
   const [items, setItems] = useState<ItineraryItem[]>([]);
   const [membersMap, setMembersMap] = useState<Record<string, any>>({});
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [weather, setWeather] = useState<any>(null);
 
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
@@ -51,6 +61,7 @@ export function TripDetails() {
   const [editTripTitle, setEditTripTitle] = useState('');
   const [editTripStart, setEditTripStart] = useState('');
   const [editTripEnd, setEditTripEnd] = useState('');
+  const [editTripRegion, setEditTripRegion] = useState('');
 
   useEffect(() => {
     if (!user || !tripId) return;
@@ -74,8 +85,6 @@ export function TripDetails() {
             await setDoc(doc(db, `trips/${tripId}/members/${user.uid}`), {
               userId: user.uid,
               role: 'editor',
-              initialBudget: 50000,
-              currency: 'JPY',
               joinedAt: Date.now()
             });
             tripData.memberIds.push(user.uid);
@@ -86,6 +95,7 @@ export function TripDetails() {
           if (tripData.memberIds.includes(user.uid)) {
             setTrip({ id: tripDoc.id, ...tripData });
             setSelectedDate(tripData.startDate);
+            setEditTripRegion(tripData.weatherRegion || '');
             
             // Load users map for avatars
             const map: Record<string, any> = {};
@@ -102,6 +112,11 @@ export function TripDetails() {
               snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() } as ItineraryItem));
               setItems(fetched);
             });
+
+            // Listen to Trip changes for weather region etc
+            onSnapshot(tripRef, (snap) => {
+               if(snap.exists()) setTrip({ id: snap.id, ...snap.data() });
+            });
           } else {
              setTrip(null);
           }
@@ -116,18 +131,60 @@ export function TripDetails() {
     return () => { if (sub) sub(); };
   }, [tripId, user, navigate]);
 
+  // Fetch weather when region or date changes
+  useEffect(() => {
+    if (!trip?.weatherRegion || !selectedDate) return;
+    
+    const fetchWeather = async () => {
+      try {
+        // Step 1: Geocoding (simplified for Japan/cities)
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trip.weatherRegion)}&count=1&language=en&format=json`);
+        const geoData = await geoRes.json();
+        
+        if (geoData.results && geoData.results[0]) {
+          const { latitude, longitude } = geoData.results[0];
+          const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
+          const weatherData = await weatherRes.json();
+          
+          // Match selectedDate to daily index
+          const dateIdx = weatherData.daily.time.indexOf(selectedDate);
+          if (dateIdx !== -1) {
+             setWeather({
+                code: weatherData.daily.weathercode[dateIdx],
+                max: weatherData.daily.temperature_2m_max[dateIdx],
+                min: weatherData.daily.temperature_2m_min[dateIdx]
+             });
+          } else {
+             setWeather(null);
+          }
+        }
+      } catch (e) {
+        console.error('Weather fetch error:', e);
+      }
+    };
+    fetchWeather();
+  }, [trip?.weatherRegion, selectedDate]);
+
+  const getWeatherInfo = (code: number) => {
+     if (code <= 3) return { label: '晴朗', icon: Sun, color: 'text-amber-500' };
+     if (code <= 48) return { label: '多雲/霧', icon: CloudRain, color: 'text-gray-400' };
+     if (code <= 67) return { label: '陣雨', icon: CloudRain, color: 'text-sky-500' };
+     if (code <= 77) return { label: '下雪', icon: CloudRain, color: 'text-blue-200' };
+     return { label: '雷雨', icon: CloudRain, color: 'text-indigo-500' };
+  };
+
   const daysLeft = useMemo(() => {
     if (!trip?.startDate) return null;
     const diff = differenceInDays(parseISO(trip.startDate), new Date());
     return diff > 0 ? diff : diff === 0 ? '今天出發' : '已出發';
-  }, [trip]);
+  }, [trip?.startDate]);
 
   const dates = useMemo(() => {
      if (!trip) return [];
      // Just gather all dates from items plus start/end to ensure we have a range
      const set = new Set([trip.startDate, trip.endDate, ...items.map(i => i.date)].filter(Boolean));
      return Array.from(set).sort();
-  }, [trip, items]);
+  }, [trip?.startDate, trip?.endDate, items]);
 
   const displayedItems = useMemo(() => items.filter(i => i.date === selectedDate), [items, selectedDate]);
 
@@ -141,6 +198,7 @@ export function TripDetails() {
     setEditTripTitle(trip.title);
     setEditTripStart(trip.startDate);
     setEditTripEnd(trip.endDate);
+    setEditTripRegion(trip.weatherRegion || '');
     setIsEditingTrip(true);
   };
 
@@ -151,10 +209,10 @@ export function TripDetails() {
         title: editTripTitle.trim(),
         startDate: editTripStart,
         endDate: editTripEnd,
+        weatherRegion: editTripRegion.trim(),
         updatedAt: Date.now()
       });
       setIsEditingTrip(false);
-      setTrip((prev: any) => ({ ...prev, title: editTripTitle.trim(), startDate: editTripStart, endDate: editTripEnd }));
     } catch(e) {
       handleFirestoreError(e, OperationType.UPDATE, `trips/${tripId}`);
     }
@@ -207,6 +265,8 @@ export function TripDetails() {
           editorUid: user.uid,
           createdAt: Date.now()
         });
+        // Auto switch to the date of the newly added item
+        setSelectedDate(formDate);
       }
       setShowModal(false);
     } catch (e) {
@@ -230,225 +290,281 @@ export function TripDetails() {
   const weatherMonth = selectedDate ? new Date(selectedDate).getMonth() : 6;
   const isSummer = weatherMonth >= 5 && weatherMonth <= 8;
 
+  // Weather Info Section (already integrated in return in my mental model, let's update the actual code)
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-yellow-50 to-white pb-24">
-      {/* Pokemon style Header */}
-      <div className="bg-red-500 text-white rounded-b-[2rem] shadow-[0_10px_20px_-10px_rgba(239,68,68,0.5)] px-6 pt-12 pb-8 relative shrink-0">
-        <div className="flex justify-between items-center mb-6">
-          <button onClick={() => navigate('/')} className="w-10 h-10 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/20 active:scale-95 transition-transform">
-            <ChevronLeft className="w-6 h-6" />
+    <div className="flex flex-col h-full bg-slate-50 relative overflow-hidden">
+      {/* Animated Header */}
+      <motion.div 
+        style={{ height: headerHeight, borderBottomLeftRadius: headerRadius, borderBottomRightRadius: headerRadius }}
+        className="bg-red-500 text-white shadow-[0_15px_40px_-20px_rgba(239,68,68,0.6)] relative z-30 shrink-0 overflow-hidden"
+      >
+        {/* Navigation Bar */}
+        <div className="absolute top-0 left-0 right-0 h-20 flex items-center justify-between px-6 z-20">
+          <button onClick={() => navigate('/')} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-black/10 backdrop-blur-xl border border-white/20 active:scale-95 transition-transform">
+            <ChevronLeft className="w-7 h-7" />
           </button>
-          <div className="flex gap-2">
-            <button onClick={startEditTrip} className="w-10 h-10 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/20 active:scale-95 transition-transform">
+          
+          <motion.div style={{ opacity: miniHeaderOpacity }} className="absolute left-1/2 -translate-x-1/2 font-black text-lg tracking-tight">
+             {trip.title}
+          </motion.div>
+
+          <div className="flex gap-3">
+             <Link to={`/trips/${tripId}/members`} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-black/10 backdrop-blur-xl border border-white/20 active:scale-95 transition-transform">
+              <Users className="w-5 h-5" />
+            </Link>
+            <button onClick={startEditTrip} className="w-11 h-11 flex items-center justify-center rounded-2xl bg-black/10 backdrop-blur-xl border border-white/20 active:scale-95 transition-transform">
               <Edit3 className="w-5 h-5" />
-            </button>
-            <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/20 active:scale-95 transition-transform">
-              <Share2 className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="flex items-end justify-between">
-            <div>
-              <div className="inline-flex items-center bg-white/25 px-2 py-1 rounded-full text-xs font-bold mb-2">
-                <Calendar className="w-3.5 h-3.5 mr-1" />
-                {trip.startDate.replace(/-/g, '/')} - {trip.endDate.replace(/-/g, '/')}
+        {/* Large Header Content */}
+        <motion.div style={{ opacity: headerOpacity }} className="absolute bottom-10 left-6 right-6 z-10">
+          <div className="flex items-end justify-between">
+              <div className="flex-1">
+                <div className="inline-flex items-center bg-white/20 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest mb-3 uppercase border border-white/10 backdrop-blur-md">
+                  <Calendar className="w-3.5 h-3.5 mr-2" />
+                  {trip.startDate.replace(/-/g, '.')} - {trip.endDate.replace(/-/g, '.')}
+                </div>
+                <h1 className="text-4xl font-black tracking-tighter leading-none text-white drop-shadow-md break-words pr-4 line-clamp-2">{trip.title}</h1>
               </div>
-              <h1 className="text-3xl font-extrabold tracking-tight leading-none text-white">{trip.title}</h1>
-            </div>
-            
-            {/* Countdown / Weather small card */}
-            <div className="text-right flex flex-col items-end">
-               <div className="text-[10px] font-bold uppercase tracking-widest text-red-100 mb-1">倒數</div>
-               <div className="text-2xl font-black bg-white text-red-500 rounded-xl px-3 py-1 shadow-inner border-2 border-red-600">
-                 {typeof daysLeft === 'number' ? `${daysLeft}天` : daysLeft}
-               </div>
-            </div>
+              
+              <div className="text-right flex flex-col items-end shrink-0">
+                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-100 mb-2">Status</div>
+                 <div className="text-2xl font-black bg-white text-red-500 rounded-2xl px-4 py-2 shadow-lg border-2 border-red-600/20 active:scale-95 cursor-default select-none">
+                   {typeof daysLeft === 'number' ? `D-${daysLeft}` : daysLeft}
+                 </div>
+              </div>
+          </div>
+        </motion.div>
+
+        {/* PokeBall Decoration */}
+        <div className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.07] pointer-events-none">
+          <div className="w-full h-full border-[40px] border-white rounded-full"></div>
+          <div className="absolute left-0 top-[112px] w-full h-[40px] bg-white"></div>
+          <div className="absolute left-[82px] top-[82px] w-[90px] h-[90px] border-[20px] border-white rounded-full bg-red-500"></div>
+        </div>
+      </motion.div>
+
+      {/* Main Scrollable Area */}
+      <div 
+        onScroll={(e) => scrollY.set(e.currentTarget.scrollTop)}
+        className="flex-1 overflow-y-auto hide-scrollbar pb-32"
+      >
+        {/* Date Picker (Horizontal) */}
+        <div className="px-6 py-10">
+           <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar px-2">
+              {dates.map((date) => {
+                 const isActive = date === selectedDate;
+                 const [yyyy, mm, dd] = date.split('-');
+                 const d = new Date(Number(yyyy), Number(mm)-1, Number(dd));
+                 return (
+                   <button 
+                     key={date}
+                     onClick={() => setSelectedDate(date)}
+                     className={cn(
+                       "snap-center shrink-0 w-[5rem] flex flex-col items-center py-4 rounded-[2.5rem] border-4 transition-all duration-300",
+                       isActive 
+                         ? "bg-yellow-400 border-yellow-500 shadow-[0_12px_25px_-5px_rgba(234,179,8,0.5)] text-gray-900 -translate-y-4 scale-110" 
+                         : "bg-white border-gray-50 text-gray-300 hover:border-gray-100 shadow-sm"
+                     )}
+                   >
+                      <span className="text-[10px] mb-1 font-black uppercase tracking-wider opacity-60">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]}
+                      </span>
+                      <span className="text-2xl font-black leading-none">
+                        {d.getDate()}
+                      </span>
+                   </button>
+                 )
+              })}
+           </div>
         </div>
 
-        {/* PokeBall subtle bg */}
-        <div className="absolute right-0 top-0 overflow-hidden w-40 h-40 opacity-10 pointer-events-none">
-          <div className="absolute right-[-40px] top-[-20px] w-48 h-48 border-[20px] border-white rounded-full"></div>
-          <div className="absolute right-0 top-[80px] w-48 h-4 bg-white"></div>
+        {/* Weather & Location Card */}
+        <div className="px-6 mb-10">
+           <div className="bg-white rounded-[2.5rem] p-6 flex items-center justify-between shadow-sm border border-gray-100 relative group overflow-hidden">
+              <div className="flex items-center gap-5 relative z-10">
+                 {weather ? (
+                   <div className="w-16 h-16 bg-sky-50 rounded-3xl flex items-center justify-center border-2 border-sky-100 shadow-inner">
+                      {(() => {
+                         const info = getWeatherInfo(weather.code);
+                         return <info.icon className={cn("w-9 h-9", info.color)} />
+                      })()}
+                   </div>
+                 ) : (
+                   <div className="w-16 h-16 bg-gray-50 rounded-3xl flex items-center justify-center border-2 border-gray-100 text-gray-200">
+                      <Sun className="w-9 h-9" />
+                   </div>
+                 )}
+                 <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base font-black text-gray-900">{weather ? getWeatherInfo(weather.code).label : '設定地區以查看天氣'}</span>
+                    </div>
+                    <div className="flex items-center text-xs font-black text-sky-500 gap-3">
+                      {weather && <span>H: {Math.round(weather.max)}° / L: {Math.round(weather.min)}°</span>}
+                      <div className="flex items-center text-gray-400 font-bold bg-gray-50 px-2 py-0.5 rounded-lg border border-gray-100 italic">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        {trip.weatherRegion || '未設定'}
+                      </div>
+                    </div>
+                 </div>
+              </div>
+              <button onClick={startEditTrip} className="w-11 h-11 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity">
+                 <Edit3 className="w-5 h-5" />
+              </button>
+              <div className="absolute right-[-20px] top-[-20px] w-24 h-24 bg-sky-500/5 rounded-full blur-2xl"></div>
+           </div>
         </div>
-      </div>
 
-      {/* Date Picker (Horizontal Scroll) */}
-      <div className="px-6 mt-6 mb-2">
-         <div className="flex overflow-x-auto gap-3 pb-4 snap-x hide-scrollbar">
-            {dates.map((date) => {
-               const isActive = date === selectedDate;
-               const [yyyy, mm, dd] = date.split('-');
-               const d = new Date(Number(yyyy), Number(mm)-1, Number(dd));
-               return (
-                 <button 
-                   key={date}
-                   onClick={() => setSelectedDate(date)}
-                   className={cn(
-                     "snap-center shrink-0 w-[4.5rem] flex flex-col items-center py-3 rounded-[2rem] border-2 transition-all font-bold",
-                     isActive 
-                       ? "bg-yellow-400 border-yellow-500 shadow-[0_8px_0_0_rgb(234,179,8),0_15px_20px_-10px_rgba(234,179,8,0.5)] text-gray-900 -translate-y-2 pb-5" 
-                       : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
-                   )}
-                 >
-                    <span className="text-xs mb-1 opacity-70">
-                      {['日', '一', '二', '三', '四', '五', '六'][d.getDay()]}
-                    </span>
-                    <span className="text-xl leading-none">
-                      {d.getDate()}
-                    </span>
+        {/* Itinerary Items (Packing style layout) */}
+        <div className="px-6 space-y-6">
+           {!selectedDate ? (
+              <div className="text-center font-bold text-gray-400 mt-10">請選擇日期</div>
+           ) : displayedItems.length === 0 ? (
+              <div className="text-center bg-white rounded-[2.5rem] p-12 border-2 border-dashed border-gray-200 shadow-sm">
+                 <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6 text-gray-200">
+                    <MapPin className="w-10 h-10" />
+                 </div>
+                 <p className="text-gray-400 font-black mb-8 text-lg">這天還沒有冒險行程！</p>
+                 <button onClick={() => openModal()} className="bg-yellow-400 text-gray-900 border-2 border-yellow-500 font-extrabold py-4 px-10 rounded-full shadow-[0_5px_0_0_rgb(234,179,8)] active:translate-y-1 active:shadow-none transition-all">
+                   新增行程
                  </button>
-               )
-            })}
-         </div>
-      </div>
+              </div>
+           ) : (
+              <div className="space-y-4">
+                 <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-4 flex items-center gap-2">
+                   <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                   Itinerary
+                 </h3>
+                 <div className="space-y-4">
+                    {displayedItems.map((item, index) => {
+                       const style = CATEGORY_STYLES[item.category] || CATEGORY_STYLES['其他'];
+                       const editor = item.editorUid ? membersMap[item.editorUid] : null;
 
-      {/* Weather Card for the day */}
-      <div className="px-6 mb-6">
-         <div className="bg-white border-2 border-sky-100 rounded-3xl p-4 flex items-center justify-between shadow-[0_5px_15px_-5px_rgba(14,165,233,0.15)]">
-            <div className="flex items-center gap-3">
-               {isSummer ? (
-                 <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center text-amber-500">
-                    <Sun className="w-7 h-7" />
-                 </div>
-               ) : (
-                 <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center text-sky-500">
-                    <CloudRain className="w-7 h-7" />
-                 </div>
-               )}
-               <div>
-                  <div className="text-sm font-bold text-gray-800">{isSummer ? '晴朗炎熱' : '陣雨/多雲'}</div>
-                  <div className="text-xs font-bold text-sky-500">{isSummer ? '31° / 26°' : '18° / 12°'}</div>
-               </div>
-            </div>
-            <div className="text-right text-[10px] font-bold text-gray-400 max-w-[100px]">
-              天氣卡片僅供參考 (假資料)
-            </div>
-         </div>
-      </div>
-
-      {/* Timeline */}
-      <div className="flex-1 overflow-y-auto px-6 pb-20 relative">
-         {!selectedDate ? (
-            <div className="text-center font-bold text-gray-400 mt-10">請選擇日期</div>
-         ) : displayedItems.length === 0 ? (
-            <div className="text-center bg-white rounded-[2rem] p-10 border-2 border-dashed border-gray-200 shadow-sm">
-               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-                  <MapPin className="w-8 h-8" />
-               </div>
-               <p className="text-gray-500 font-bold mb-6">這天還沒有行程！</p>
-               <button onClick={() => openModal()} className="bg-yellow-400 text-gray-900 border-2 border-yellow-500 font-black py-3 px-6 rounded-full shadow-[0_4px_0_0_rgb(234,179,8)] active:translate-y-1 active:shadow-none transition-all">
-                 新增第一筆
-               </button>
-            </div>
-         ) : (
-            <div className="pl-4 border-l-4 border-gray-200 space-y-8 relative">
-               {displayedItems.map((item, index) => {
-                  const style = CATEGORY_STYLES[item.category] || CATEGORY_STYLES['其他'];
-                  const editor = item.editorUid ? membersMap[item.editorUid] : null;
-
-                  return (
-                     <div key={item.id} className="relative group cursor-pointer" onClick={() => openModal(item)}>
-                        {/* Timeline dot */}
-                        <div className={cn("absolute -left-[27px] top-1.5 w-7 h-7 rounded-full border-4 border-white flex items-center justify-center font-bold text-[10px] shadow-sm", style)}>
-                          {index + 1}
-                        </div>
-                        
-                        <div className="bg-white border-2 border-gray-100 p-4 rounded-[2rem] shadow-[0_5px_15px_-5px_rgba(0,0,0,0.05)] hover:border-sky-300 transition-colors ml-4">
-                           <div className="flex justify-between items-start mb-2 gap-4">
-                              <h4 className="font-extrabold text-gray-900 text-lg leading-tight">{item.title}</h4>
-                              <span className={cn("shrink-0 px-2 py-1 rounded-lg text-[10px] font-black border", style)}>
-                                {item.category || '其他'}
-                              </span>
-                           </div>
-                           
-                           <div className="flex flex-col gap-1.5 mb-3">
-                             <div className="flex items-center text-xs font-bold text-gray-500">
-                                <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                {item.startTime}
+                       return (
+                          <motion.div 
+                            key={item.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            onClick={() => openModal(item)}
+                            className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100 hover:border-red-200 active:scale-[0.98] transition-all cursor-pointer group"
+                          >
+                             <div className="flex justify-between items-start mb-4">
+                                <div className="flex gap-4">
+                                   <div className={cn("w-12 h-12 rounded-2xl border-2 flex flex-col items-center justify-center shadow-inner shrink-0", style)}>
+                                      <Clock className="w-4 h-4 mb-0.5" />
+                                      <span className="text-[10px] font-black">{item.startTime}</span>
+                                   </div>
+                                   <div>
+                                      <h4 className="font-black text-gray-900 text-lg leading-tight group-hover:text-red-500 transition-colors">{item.title}</h4>
+                                      <div className="flex items-center gap-2 mt-1">
+                                         <span className={cn("px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border", style)}>
+                                           {item.category || '其他'}
+                                         </span>
+                                         {item.location && (
+                                            <span className="text-[10px] font-bold text-gray-400 flex items-center">
+                                               <MapPin className="w-3 h-3 mr-1" />
+                                               {item.location}
+                                            </span>
+                                         )}
+                                      </div>
+                                   </div>
+                                </div>
+                                <button className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <Edit3 className="w-5 h-5" />
+                                </button>
                              </div>
-                             {item.location && (
-                               <div className="flex items-start text-xs font-bold text-sky-600 bg-sky-50 px-2.5 py-1.5 rounded-xl w-fit">
-                                  <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                  <span className="leading-snug">{item.location}</span>
-                               </div>
+
+                             {item.notes && (
+                                <div className="bg-slate-50 rounded-2xl p-4 text-xs font-bold text-slate-500 leading-relaxed border-l-4 border-slate-200 mb-4">
+                                   {item.notes}
+                                </div>
                              )}
-                           </div>
 
-                           <div className="flex justify-between items-end mt-4 pt-4 border-t-2 border-gray-50/80">
-                              <div className="text-[10px] font-bold text-gray-400 truncate pr-4">
-                                 {item.notes || '無備註..'}
-                              </div>
-                              {/* Editor Avatar */}
-                              {editor && (
-                                 <div className="w-7 h-7 shrink-0 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-100 flex items-center justify-center title" title={`編輯者: ${editor.displayName}`}>
-                                    {editor.photoURL ? (
-                                       <img src={editor.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-                                    ) : (
-                                       <span className="text-[10px] font-bold text-gray-500">{editor.displayName?.charAt(0)}</span>
-                                    )}
-                                 </div>
-                              )}
-                           </div>
-                        </div>
-                     </div>
-                  )
-               })}
-
-               {/* Map button linking to Google Maps route potentially */}
-               <div className="pt-6 ml-4">
-                  <button onClick={() => openModal()} className="flex items-center justify-center w-full gap-2 bg-gray-100 text-gray-500 border-2 border-dashed border-gray-300 font-bold py-4 rounded-[2rem] hover:bg-gray-200 transition-colors">
-                     <Plus className="w-5 h-5" />
-                     新增行程
-                  </button>
-               </div>
-            </div>
-         )}
+                             <div className="flex justify-between items-center pt-4 border-t border-gray-50">
+                                <div className="text-[10px] font-black text-gray-300 uppercase tracking-widest">
+                                   Item #{index + 1}
+                                </div>
+                                {editor && (
+                                   <div className="flex items-center gap-2 pr-1">
+                                      <span className="text-[10px] font-bold text-gray-400">Edited by {editor.displayName}</span>
+                                      <div className="w-6 h-6 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-100 flex items-center justify-center ring-2 ring-gray-50">
+                                         {editor.photoURL ? (
+                                            <img src={editor.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                                         ) : (
+                                            <span className="text-[8px] font-bold text-gray-500">{editor.displayName?.charAt(0)}</span>
+                                         )}
+                                      </div>
+                                   </div>
+                                )}
+                             </div>
+                          </motion.div>
+                       )
+                    })}
+                 </div>
+              </div>
+           )}
+        </div>
       </div>
 
-      {/* Floating Add Button logic handled by timeline bottom button, or we can use FAB */}
-      {selectedDate && displayedItems.length > 0 && (
-         <button onClick={() => openModal()} className="absolute bottom-28 right-6 w-14 h-14 bg-red-500 text-white rounded-full flex items-center justify-center shadow-[0_8px_0_0_rgb(185,28,28)] active:translate-y-2 active:shadow-none transition-all z-20 border-2 border-red-600">
-           <Plus className="w-6 h-6" />
+      {/* Floating Add Action Button */}
+      {selectedDate && (
+         <button 
+           onClick={() => openModal()} 
+           className="absolute bottom-6 right-6 w-16 h-16 bg-red-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(239,68,68,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+         >
+           <Plus className="w-8 h-8" strokeWidth={3} />
          </button>
       )}
 
       {/* Edit Trip Component */}
       {isEditingTrip && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 duration-200 border-2 border-red-500">
-            <h3 className="text-xl font-extrabold mb-4 text-gray-900">編輯旅程資訊</h3>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border-t-8 border-red-500">
+            <h3 className="text-2xl font-black mb-6 text-gray-900 uppercase tracking-tight">Trip Settings</h3>
+            <div className="space-y-6">
               <div>
-                <label className="text-xs font-bold text-gray-400 mb-1 block">旅程名稱</label>
+                <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">Trip Title</label>
                 <input 
                   type="text" 
                   value={editTripTitle} onChange={e => setEditTripTitle(e.target.value)}
-                  className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-gray-100 font-bold focus:border-red-400 outline-none"
-                  placeholder="旅程名稱"
+                  className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner"
+                  placeholder="Journey Name"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-400 mb-1 block">出發日</label>
+                  <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">Start Date</label>
                   <input 
                     type="date" 
                     value={editTripStart} onChange={e => setEditTripStart(e.target.value)}
-                    className="w-full bg-gray-50 p-3 rounded-2xl border-2 border-gray-100 font-bold focus:border-red-400 outline-none"
+                    className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner text-sm"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-400 mb-1 block">結束日</label>
+                  <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">End Date</label>
                   <input 
                     type="date" 
                     value={editTripEnd} onChange={e => setEditTripEnd(e.target.value)}
-                    className="w-full bg-gray-50 p-3 rounded-2xl border-2 border-gray-100 font-bold focus:border-red-400 outline-none"
+                    className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner text-sm"
                   />
                 </div>
               </div>
-              <div className="flex gap-3 mt-6 pt-2">
-                 <button onClick={() => setIsEditingTrip(false)} className="flex-1 py-4 text-gray-400 font-bold bg-gray-100 rounded-2xl border-2 border-gray-200 hover:bg-gray-200">取消</button>
-                 <button onClick={saveEditTrip} disabled={!editTripTitle} className="flex-1 py-4 text-white font-black bg-red-500 border-2 border-red-600 rounded-2xl shadow-[0_4px_0_0_rgb(220,38,38)] disabled:opacity-50 active:translate-y-1 active:shadow-none hover:bg-red-400">儲存</button>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">Weather Region (English)</label>
+                <input 
+                  type="text" 
+                  value={editTripRegion} onChange={e => setEditTripRegion(e.target.value)}
+                  className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner"
+                  placeholder="City, Country (e.g. Tokyo, JP)"
+                />
+                <p className="text-[10px] text-gray-400 mt-2 font-bold ml-2 italic">* used to fetch real-time weather data</p>
+              </div>
+              <div className="flex gap-4 mt-8">
+                 <button onClick={() => setIsEditingTrip(false)} className="flex-1 py-4 text-gray-400 font-black bg-gray-50 rounded-2xl border-2 border-gray-100 hover:bg-gray-100 transition-colors uppercase text-sm">Cancel</button>
+                 <button onClick={saveEditTrip} disabled={!editTripTitle} className="flex-1 py-4 text-white font-black bg-red-500 border-b-4 border-red-700 rounded-2xl active:translate-y-1 active:border-b-0 transition-all uppercase text-sm shadow-lg shadow-red-100">Confirm</button>
               </div>
             </div>
           </div>

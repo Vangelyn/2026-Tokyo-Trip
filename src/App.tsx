@@ -132,7 +132,28 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (usr) => {
+    const unsub = onAuthStateChanged(auth, async (usr) => {
+      if (usr) {
+        // Ensure user document exists (covers auto-login and first login)
+        try {
+          const userDocRef = doc(db, 'users', usr.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (!userDoc.exists()) {
+            await setDoc(userDocRef, {
+              email: usr.email,
+              displayName: usr.displayName || 'Traveler',
+              photoURL: usr.photoURL || '',
+              createdAt: Date.now()
+            });
+          } else {
+             if (usr.photoURL && userDoc.data().photoURL !== usr.photoURL) {
+                await updateDoc(userDocRef, { photoURL: usr.photoURL });
+             }
+          }
+        } catch(e) {
+          console.error("Profile sync error:", e);
+        }
+      }
       setUser(usr);
       setLoading(false);
     });
