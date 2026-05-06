@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import axios from "axios";
 import axiosRetry from "axios-retry";
@@ -21,40 +20,28 @@ axiosRetry(axios, {
 
 app.use(express.json());
 
-// API: Exchange Rates from Bank of Taiwan
+// API: Exchange Rates
 app.get("/api/rates", async (req, res) => {
   try {
-    const response = await axios.get("https://rate.bot.com.tw/xrt?Lang=zh-TW", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
-      },
-      timeout: 15000
+    const response = await axios.get("https://open.er-api.com/v6/latest/TWD", {
+      timeout: 10000
     });
-    const $ = cheerio.load(response.data);
+    
+    const apiRates = response.data?.rates || {};
     const rates: Record<string, number> = { TWD: 1 };
-
-    $("table tbody tr").each((_, element) => {
-      const currencyText = $(element).find(".visible-phone").text().trim();
-      const spotSellRate = $(element).find("td[data-table='本行即期賣出']").text().trim();
-      
-      const currencyCodeMatch = currencyText.match(/\(([A-Z]+)\)/);
-      if (currencyCodeMatch && spotSellRate && spotSellRate !== "-") {
-        const code = currencyCodeMatch[1];
-        const val = parseFloat(spotSellRate);
-        if (!isNaN(val)) {
-          rates[code] = val;
-        }
+    
+    // open.er-api gives rates as 1 TWD = X Foreign
+    // We need 1 Foreign = X TWD, so we inverse the rate
+    for (const [currency, rate] of Object.entries(apiRates)) {
+      if (typeof rate === "number" && rate > 0) {
+        rates[currency] = 1 / rate;
       }
-    });
+    }
 
     res.json({ rates, updatedAt: new Date().toISOString() });
-  } catch (error) {
-    console.error("Fetch rates error:", error);
-    res.status(500).json({ error: "Failed to fetch exchange rates from Bank of Taiwan" });
+  } catch (error: any) {
+    console.error("Fetch rates error:", error.message);
+    res.status(500).json({ error: "Failed to fetch exchange rates" });
   }
 });
 
@@ -224,6 +211,7 @@ app.get("/api/weather", async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
