@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AuthContext } from '../App';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, setDoc, updateDoc, arrayRemove, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, setDoc, updateDoc, arrayRemove, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, MapPin, Calendar, LogOut, MoreVertical, Trash2 } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -26,14 +26,16 @@ export function MyTrips() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const fetchTrips = async () => {
+  useEffect(() => {
     if (!user) return;
-    try {
-      const q = query(
-        collection(db, 'trips'),
-        where('memberIds', 'array-contains', user.uid)
-      );
-      const snapshot = await getDocs(q);
+    setLoading(true);
+    
+    const q = query(
+      collection(db, 'trips'),
+      where('memberIds', 'array-contains', user.uid)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedTrips: Trip[] = [];
       snapshot.forEach(doc => {
         fetchedTrips.push({ id: doc.id, ...doc.data() } as Trip);
@@ -41,31 +43,43 @@ export function MyTrips() {
       // Sort by start date
       fetchedTrips.sort((a, b) => a.startDate.localeCompare(b.startDate));
       setTrips(fetchedTrips);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'trips');
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'trips');
+      setLoading(false);
+    });
 
-  useEffect(() => {
-    fetchTrips();
+    return () => unsubscribe();
   }, [user]);
 
   const handleLeaveTrip = async (e: React.MouseEvent, tripId: string) => {
     e.preventDefault();
     e.stopPropagation();
     if (!user) return;
-    if (!confirm(t('Home.LeaveConfirm'))) return;
+    
+    const tripToLeave = trips.find(t => t.id === tripId);
+    const isOwner = tripToLeave?.ownerId === user.uid;
+    
+    // Customize message for owner vs member
+    const confirmMsg = isOwner ? t('Home.DeleteTripConfirm', '確定要刪除並退出此行程嗎？') : t('Home.LeaveConfirm');
+    if (!confirm(confirmMsg)) return;
+
+    setMenuOpenId(null);
 
     try {
-      const tripRef = doc(db, 'trips', tripId);
-      await updateDoc(tripRef, {
-        memberIds: arrayRemove(user.uid)
-      });
-      await deleteDoc(doc(db, `trips/${tripId}/members`, user.uid));
-      setTrips(prev => prev.filter(t => t.id !== tripId));
-      alert('已成功退出行程');
+      if (isOwner) {
+        // If owner, we delete the trip document (cascading delete isn't automatic in Firestore, 
+        // but for a simple app we at least delete the main document to hide it)
+        await deleteDoc(doc(db, 'trips', tripId));
+      } else {
+        // Just remove the member
+        const tripRef = doc(db, 'trips', tripId);
+        await updateDoc(tripRef, {
+          memberIds: arrayRemove(user.uid)
+        });
+        await deleteDoc(doc(db, `trips/${tripId}/members`, user.uid));
+      }
+      // UI will auto-update via onSnapshot
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}`);
     }

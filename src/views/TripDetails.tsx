@@ -387,8 +387,8 @@ export function TripDetails() {
         className="flex-1 overflow-y-auto hide-scrollbar pb-32"
       >
         {/* Date Picker (Horizontal) */}
-        <div className="px-6 py-10">
-           <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar px-2">
+        <div className="px-6 pt-16 pb-10 min-h-[160px]">
+           <div className="flex overflow-x-auto gap-5 pb-6 snap-x hide-scrollbar px-2 pt-4">
               {dates.map((date) => {
                  const isActive = date === selectedDate;
                  const [yyyy, mm, dd] = date.split('-');
@@ -398,13 +398,13 @@ export function TripDetails() {
                      key={date}
                      onClick={() => setSelectedDate(date)}
                      className={cn(
-                       "snap-center shrink-0 w-[5rem] flex flex-col items-center py-4 rounded-[2.5rem] border-4 transition-all duration-300",
+                       "snap-center shrink-0 w-20 h-28 flex flex-col items-center justify-center rounded-[2.5rem] border-4 transition-all duration-500",
                        isActive 
-                         ? "bg-yellow-400 border-yellow-500 shadow-[0_12px_25px_-5px_rgba(234,179,8,0.5)] text-gray-900 -translate-y-4 scale-110" 
-                         : "bg-white border-gray-50 text-gray-300 hover:border-gray-100 shadow-sm"
+                         ? "bg-yellow-400 border-yellow-500 shadow-[0_20px_40px_-10px_rgba(234,179,8,0.4)] text-gray-900 -translate-y-6 scale-110 z-10" 
+                         : "bg-white border-gray-50 text-gray-300 hover:border-gray-100 shadow-sm z-0"
                      )}
                    >
-                      <span className="text-[10px] mb-1 font-black uppercase tracking-wider opacity-60">
+                      <span className="text-[10px] mb-1 font-black uppercase tracking-widest opacity-60">
                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]}
                       </span>
                       <span className="text-2xl font-black leading-none">
