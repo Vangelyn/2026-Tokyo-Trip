@@ -4,8 +4,10 @@ import { collection, query, onSnapshot, doc, getDoc, getDocs, where } from 'fire
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
 import { ChevronLeft, Share2, Users, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function Members() {
+  const { t } = useTranslation();
   const { tripId } = useParams();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -18,14 +20,14 @@ export function Members() {
     
     const unsubscribeTrip = onSnapshot(doc(db, 'trips', tripId), async (docSnap) => {
       if(docSnap.exists()) {
-         const t = docSnap.data();
-         setTrip(t);
+         const tData = docSnap.data();
+         setTrip(tData);
          
          // Fetch user profiles for memberIds
-         if (t.memberIds && t.memberIds.length > 0) {
+         if (tData.memberIds && tData.memberIds.length > 0) {
             try {
               const usersCache: any[] = [];
-              for (const uid of t.memberIds) {
+              for (const uid of tData.memberIds) {
                  const uSnap = await getDoc(doc(db, 'users', uid));
                  if (uSnap.exists()) {
                    usersCache.push({ id: uid, ...uSnap.data() });
@@ -45,8 +47,9 @@ export function Members() {
 
   const handleShare = () => {
     if (!tripId) return;
-    navigator.clipboard.writeText(`${window.location.origin}/trips/${tripId}?join=true`);
-    alert('已複製邀請連結！快傳給朋友吧\n\n' + `${window.location.origin}/trips/${tripId}?join=true`);
+    const shareUrl = `${window.location.origin}/trips/${tripId}?join=true`;
+    navigator.clipboard.writeText(shareUrl);
+    alert(t('Members.ShareAlert') + '\n\n' + shareUrl);
   };
 
   if (loading) {
@@ -61,13 +64,13 @@ export function Members() {
           <button onClick={() => navigate(`/trips/${tripId}`)} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md active:scale-95 transition-transform">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold tracking-tight">旅伴</h1>
+          <h1 className="text-xl font-bold tracking-tight">{t('Members.Title')}</h1>
           <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md active:scale-95 transition-transform">
             <Share2 className="w-5 h-5" />
           </button>
         </div>
         
-        <p className="text-blue-100 text-center font-medium opacity-90">{trip?.title || '旅程'}</p>
+        <p className="text-blue-100 text-center font-medium opacity-90">{trip?.title || t('MyTrips.Trip')}</p>
       </div>
 
       {/* Content */}
@@ -77,7 +80,7 @@ export function Members() {
                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center">
                   <Users className="w-5 h-5" />
                </div>
-               <h2 className="text-lg font-bold text-gray-800">同行成員 ({members.length})</h2>
+               <h2 className="text-lg font-bold text-gray-800">{t('Members.Count', { count: members.length })}</h2>
             </div>
             
             <div className="flex flex-col gap-4">
@@ -94,13 +97,13 @@ export function Members() {
                            )}
                            {m.id === trip?.ownerId && (
                               <div className="absolute -bottom-1 -right-1 bg-yellow-400 text-[10px] font-bold text-white px-2 py-0.5 rounded-full border-2 border-white">
-                                主揪
+                                {t('Members.Owner')}
                               </div>
                            )}
                         </div>
                         <div className="flex flex-col">
                            <span className="font-bold text-gray-900">{m.displayName}</span>
-                           {m.id === user?.uid && <span className="text-xs text-blue-500 font-bold mt-0.5 bg-blue-50 w-fit px-2 py-0.5 rounded-md">你自己</span>}
+                           {m.id === user?.uid && <span className="text-xs text-blue-500 font-bold mt-0.5 bg-blue-50 w-fit px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider">{t('Members.You')}</span>}
                         </div>
                      </div>
                   </div>
@@ -112,7 +115,7 @@ export function Members() {
               className="mt-6 w-full flex items-center justify-center gap-2 bg-blue-50 text-blue-600 font-bold py-4 rounded-2xl hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm"
             >
                <Share2 className="w-5 h-5" />
-               邀請更多旅伴
+               {t('Members.InviteMore')}
             </button>
          </div>
       </div>

@@ -1,11 +1,13 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, onSnapshot, addDoc, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, doc, getDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
-import { ChevronLeft, Plus, Receipt, Coffee, ShoppingBag, Train, Home, Edit3, Trash2 } from 'lucide-react';
+import { ChevronLeft, Plus, Receipt, Coffee, ShoppingBag, Train, Home, Edit3, Trash2, Wallet, Coins } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 
 interface Expense {
   id: string;
@@ -26,18 +28,34 @@ const CATEGORIES = [
 ];
 
 export function Bookkeeping() {
+  const { t } = useTranslation();
   const { tripId } = useParams();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [initialBudget, setInitialBudget] = useState(50000);
+  const [initialBudget, setInitialBudget] = useState(0);
   const [budgetCurrency, setBudgetCurrency] = useState('TWD');
   const [displayCurrency, setDisplayCurrency] = useState('TWD');
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [showInitialModal, setShowInitialModal] = useState(false);
   
   const [jpyToTwdRate, setJpyToTwdRate] = useState(0.21);
+
+  useEffect(() => {
+    const fetchRates = async () => {
+      try {
+        const res = await axios.get('/api/rates');
+        if (res.data && res.data.jpy_twd) {
+           setJpyToTwdRate(res.data.jpy_twd);
+        }
+      } catch (e) {
+        console.error("Failed to fetch rates", e);
+      }
+    };
+    fetchRates();
+  }, []);
 
   useEffect(() => {
     if (!tripId || !user) return;
@@ -48,10 +66,13 @@ export function Bookkeeping() {
         const data = docSnap.data();
         if (data.totalBudget !== undefined) {
           setInitialBudget(data.totalBudget);
+          setShowInitialModal(false);
+        } else {
+          // If totalBudget is not set, show the initial setup modal
+          setShowInitialModal(true);
         }
         if (data.budgetCurrency) {
           setBudgetCurrency(data.budgetCurrency);
-          // Only auto-switch display currency once if it was default
           setDisplayCurrency(prev => (prev === 'TWD' && data.budgetCurrency === 'JPY') || (prev === 'JPY' && data.budgetCurrency === 'TWD') ? data.budgetCurrency : prev);
         }
       }
@@ -78,22 +99,21 @@ export function Bookkeeping() {
     };
   }, [tripId, user]);
 
-  const handleUpdateBudget = async (newVal: string) => {
+  const handleUpdateBudget = async (newVal: string | number, curr: string) => {
     if (!tripId || !user) return;
     const newBudget = Number(newVal);
-    if (isNaN(newBudget) || newBudget <= 0) {
-      setIsEditingBudget(false);
-      return;
-    }
-    setInitialBudget(newBudget);
-    setBudgetCurrency(displayCurrency);
-    setIsEditingBudget(false);
+    if (isNaN(newBudget)) return;
+    
     try {
       await updateDoc(doc(db, 'trips', tripId), {
         totalBudget: newBudget,
-        budgetCurrency: displayCurrency,
+        budgetCurrency: curr,
         updatedAt: Date.now()
       });
+      setInitialBudget(newBudget);
+      setBudgetCurrency(curr);
+      setIsEditingBudget(false);
+      setShowInitialModal(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}`);
     }
@@ -107,11 +127,9 @@ export function Bookkeeping() {
 
   const totalSpent = expenses.reduce((acc, curr) => {
     if (displayCurrency === 'TWD') {
-       // Converted to TWD for sum
        const costInTWD = curr.currency === 'JPY' ? curr.amount * jpyToTwdRate : curr.amount;
        return acc + costInTWD;
     } else {
-       // Converted to JPY for sum
        const costInJPY = curr.currency === 'TWD' ? curr.amount / jpyToTwdRate : curr.amount;
        return acc + costInJPY;
     }
@@ -126,7 +144,7 @@ export function Bookkeeping() {
           <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 active:scale-95 transition-transform backdrop-blur-md">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold">預算記帳</h1>
+          <h1 className="text-xl font-bold">{t('Bookkeeping.Title')}</h1>
           <button 
             onClick={() => setDisplayCurrency(prev => prev === 'JPY' ? 'TWD' : 'JPY')} 
             className="px-4 h-10 flex items-center justify-center rounded-full bg-white/20 text-sm font-bold font-mono tracking-wider transition-colors active:scale-95 border-2 border-white/30 hover:bg-white/30 backdrop-blur-md"
@@ -137,7 +155,7 @@ export function Bookkeeping() {
         </div>
 
         <div className="text-center mb-4 transition-all">
-          <p className="text-emerald-100 text-xs mb-1 font-bold uppercase tracking-widest opacity-80">剩餘預算 ({displayCurrency})</p>
+          <p className="text-emerald-100 text-xs mb-1 font-bold uppercase tracking-widest opacity-80">{t('Bookkeeping.Remaining')} ({displayCurrency})</p>
           <div className="text-5xl font-black tracking-tighter px-6 py-3 bg-white/10 rounded-[2rem] inline-block border-2 border-white/20 shadow-inner">
             <span className="opacity-60 text-3xl mr-1">{displayCurrency === 'JPY' ? '¥' : '$'}</span>
             {Math.round(remaining).toLocaleString()}
@@ -146,15 +164,15 @@ export function Bookkeeping() {
 
         <div className="flex justify-between items-center mt-6 bg-white/10 p-4 rounded-[2rem] backdrop-blur-md border border-white/20">
           <div className="flex-1 text-center">
-            <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">總預算</p>
+            <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">{t('Bookkeeping.InitialBalance')}</p>
             {isEditingBudget ? (
                <div className="flex flex-col items-center">
                   <input 
                     type="number" 
                     autoFocus
                     defaultValue={Math.round(convertedBudget)}
-                    onBlur={(e) => handleUpdateBudget(e.target.value)}
-                    onKeyDown={(e) => { if(e.key === 'Enter') handleUpdateBudget(e.currentTarget.value) }}
+                    onBlur={(e) => handleUpdateBudget(e.target.value, displayCurrency)}
+                    onKeyDown={(e) => { if(e.key === 'Enter') handleUpdateBudget(e.currentTarget.value, displayCurrency) }}
                     className="w-28 bg-white text-emerald-600 font-bold rounded-xl px-3 py-1.5 text-center appearance-none outline-none shadow-lg text-lg"
                   />
                </div>
@@ -170,7 +188,7 @@ export function Bookkeeping() {
           </div>
           <div className="w-px h-8 bg-white/20 mx-2"></div>
           <div className="flex-1 text-center">
-             <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">累計支出</p>
+             <p className="text-emerald-100 text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">{t('Bookkeeping.TotalSpent')}</p>
              <div className="text-lg font-black">{displayCurrency === 'JPY' ? '¥' : '$'}{Math.round(totalSpent).toLocaleString()}</div>
           </div>
         </div>
@@ -178,16 +196,16 @@ export function Bookkeeping() {
 
       <div className="flex-1 overflow-y-auto px-6 py-6 pb-32 z-10">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-extrabold text-gray-900 border-l-4 border-emerald-500 pl-3">支出明細</h2>
+          <h2 className="text-lg font-extrabold text-gray-900 border-l-4 border-emerald-500 pl-3">{t('Bookkeeping.Expenses')}</h2>
           <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-            匯率: 1 JPY = {jpyToTwdRate} TWD
+            {t('Bookkeeping.Rate')}: 1 JPY = {jpyToTwdRate} TWD
           </div>
         </div>
 
         {expenses.length === 0 ? (
-          <div className="text-center text-gray-300 py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100 shadow-sm">
+          <div className="text-center text-gray-300 py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100 shadow-sm transition-all animate-in fade-in duration-500">
             <Receipt className="w-16 h-16 mx-auto mb-4 opacity-10" />
-            <p className="font-bold">目前尚無支出紀錄</p>
+            <p className="font-bold">{t('Bookkeeping.NoExps')}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -235,13 +253,59 @@ export function Bookkeeping() {
         )}
       </div>
 
+      {/* Initial Budget Setup Modal */}
+      {showInitialModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
+           <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className="w-20 h-20 bg-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-[0_15px_30px_-10px_rgba(16,185,129,0.5)]">
+                 <Wallet className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-2xl font-black text-center text-gray-900 mb-2">{t('Bookkeeping.Welcome')}</h3>
+              <p className="text-center text-gray-400 font-bold mb-10 text-sm leading-relaxed px-4">{t('Bookkeeping.WelcomeSub')}</p>
+              
+              <div className="space-y-6">
+                 <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-2">{t('Bookkeeping.HowMuch')}</label>
+                    <div className="flex items-center gap-4">
+                       <div className="relative flex-1">
+                          <input 
+                            type="number"
+                            placeholder="0"
+                            className="w-full bg-gray-50 border-2 border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl p-4 font-black text-xl outline-none transition-all shadow-inner"
+                            id="initial-budget-input"
+                          />
+                          <Coins className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-300" />
+                       </div>
+                       <select className="bg-emerald-50 text-emerald-600 font-bold rounded-2xl px-4 py-4 outline-none border-2 border-emerald-100" id="initial-budget-currency">
+                          <option value="JPY">JPY</option>
+                          <option value="TWD">TWD</option>
+                       </select>
+                    </div>
+                 </div>
+                 <button 
+                  onClick={() => {
+                    const val = (document.getElementById('initial-budget-input') as HTMLInputElement).value;
+                    const curr = (document.getElementById('initial-budget-currency') as HTMLSelectElement).value;
+                    handleUpdateBudget(val, curr);
+                  }}
+                  className="w-full bg-emerald-500 text-white font-black py-5 rounded-[2rem] shadow-[0_8px_0_0_rgb(5,150,105)] active:translate-y-1 active:shadow-none transition-all text-xl"
+                 >
+                   {t('Common.Confirm')}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Floating Add Action Button */}
-      <button 
-        onClick={() => setShowAdd(true)}
-        className="fixed bottom-6 right-6 w-16 h-16 bg-emerald-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
-      >
-        <Plus className="w-8 h-8" strokeWidth={3} />
-      </button>
+      {!showInitialModal && (
+        <button 
+          onClick={() => setShowAdd(true)}
+          className="fixed bottom-6 right-6 w-16 h-16 bg-emerald-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+        >
+          <Plus className="w-8 h-8" strokeWidth={3} />
+        </button>
+      )}
 
       {(showAdd || editingExpense) && (
         <ExpenseModal 
@@ -256,6 +320,7 @@ export function Bookkeeping() {
 }
 
 function ExpenseModal({ expense, onClose, tripId, jpyToTwdRate }: { expense?: Expense | null, onClose: () => void, tripId: string, jpyToTwdRate: number }) {
+  const { t } = useTranslation();
   const { user } = useContext(AuthContext);
   const [amount, setAmount] = useState(expense?.amount?.toString() || '');
   const [currency, setCurrency] = useState(expense?.currency || 'JPY');
@@ -303,10 +368,10 @@ function ExpenseModal({ expense, onClose, tripId, jpyToTwdRate }: { expense?: Ex
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white w-full max-w-md rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto pb-safe">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+      <div className="bg-white w-full max-w-md rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto pb-safe relative">
         <div className="flex justify-between items-center mb-8">
-          <h3 className="text-2xl font-black text-gray-900">{expense ? '編輯支出' : '新增支出'}</h3>
+          <h3 className="text-2xl font-black text-gray-900">{expense ? t('Bookkeeping.EditExp') : t('Bookkeeping.AddExp')}</h3>
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full text-gray-400 font-bold hover:bg-gray-200 transition-colors">✕</button>
         </div>
 
@@ -344,7 +409,7 @@ function ExpenseModal({ expense, onClose, tripId, jpyToTwdRate }: { expense?: Ex
           </div>
 
           <div>
-            <label className="block text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-2">類別選擇</label>
+            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-2">{t('Bookkeeping.CatSelect')}</label>
             <div className="grid grid-cols-5 gap-3">
               {CATEGORIES.map(cat => (
                 <button
@@ -362,7 +427,7 @@ function ExpenseModal({ expense, onClose, tripId, jpyToTwdRate }: { expense?: Ex
           </div>
 
           <div>
-             <label className="block text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-2 ml-2">支出原因</label>
+             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2 ml-2">{t('Bookkeeping.Description')}</label>
              <input type="text"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
@@ -385,7 +450,7 @@ function ExpenseModal({ expense, onClose, tripId, jpyToTwdRate }: { expense?: Ex
               disabled={!amount}
               className="flex-1 bg-emerald-500 text-white font-black text-xl rounded-[2rem] py-5 shadow-[0_8px_0_0_rgb(5,150,105)] active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none"
             >
-              {expense ? '確認修正' : '儲存紀錄'}
+              {expense ? t('Common.Confirm') : t('Common.Confirm')}
             </button>
           </div>
         </div>

@@ -3,10 +3,12 @@ import { useEffect, useState, useContext, useMemo, useRef } from 'react';
 import { doc, getDoc, collection, updateDoc, arrayUnion, setDoc, query, orderBy, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
-import { ChevronLeft, Calendar, Share2, MapPin, Clock, Plus, Edit3, Trash2, Map, Users, Wallet, Backpack, Sun, CloudRain } from 'lucide-react';
+import { ChevronLeft, Calendar, Share2, MapPin, Clock, Plus, Edit3, Trash2, Map, Users, Wallet, Backpack, Sun, CloudRain, Thermometer } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { parseISO, differenceInDays } from 'date-fns';
+import { parseISO, differenceInDays, format, addDays } from 'date-fns';
 import { motion, useMotionValue, useTransform } from 'motion/react';
+import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 
 interface ItineraryItem {
   id: string;
@@ -29,6 +31,7 @@ const CATEGORY_STYLES: Record<string, string> = {
 };
 
 export function TripDetails() {
+  const { t, i18n } = useTranslation();
   const { tripId } = useParams();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -36,7 +39,7 @@ export function TripDetails() {
   const scrollY = useMotionValue(0);
 
   // Header Animation values
-  const headerHeight = useTransform(scrollY, [0, 100], [240, 100]);
+  const headerHeight = useTransform(scrollY, [0, 100], [280, 100]);
   const headerOpacity = useTransform(scrollY, [0, 60], [1, 0]);
   const miniHeaderOpacity = useTransform(scrollY, [80, 120], [0, 1]);
   const headerRadius = useTransform(scrollY, [0, 100], [48, 24]);
@@ -47,6 +50,7 @@ export function TripDetails() {
   const [membersMap, setMembersMap] = useState<Record<string, any>>({});
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [weather, setWeather] = useState<any>(null);
+  const [weatherLocations, setWeatherLocations] = useState<{name: string, value: string}[]>([]);
 
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
@@ -62,6 +66,18 @@ export function TripDetails() {
   const [editTripStart, setEditTripStart] = useState('');
   const [editTripEnd, setEditTripEnd] = useState('');
   const [editTripRegion, setEditTripRegion] = useState('');
+
+  useEffect(() => {
+    const fetchWeatherLocations = async () => {
+      try {
+        const res = await axios.get('/api/weather-locations');
+        setWeatherLocations(res.data);
+      } catch (e) {
+        console.error("Failed to fetch weather locations", e);
+      }
+    };
+    fetchWeatherLocations();
+  }, []);
 
   useEffect(() => {
     if (!user || !tripId) return;
@@ -135,6 +151,15 @@ export function TripDetails() {
   useEffect(() => {
     if (!trip?.weatherRegion || !selectedDate) return;
     
+    // Check if selectedDate is within 7 days from now
+    const today = new Date();
+    const targetDate = parseISO(selectedDate);
+    const diff = differenceInDays(targetDate, today);
+    if (diff < 0 || diff > 7) {
+      setWeather(null);
+      return;
+    }
+    
     const fetchWeather = async () => {
       try {
         // Step 1: Geocoding (simplified for Japan/cities)
@@ -176,15 +201,16 @@ export function TripDetails() {
   const daysLeft = useMemo(() => {
     if (!trip?.startDate) return null;
     const diff = differenceInDays(parseISO(trip.startDate), new Date());
-    return diff > 0 ? diff : diff === 0 ? '今天出發' : '已出發';
-  }, [trip?.startDate]);
+    return diff > 0 ? diff : diff === 0 ? t('TripDetails.CountdownDeparted') : t('TripDetails.CountdownDeparted');
+  }, [trip?.startDate, t]);
 
   const dates = useMemo(() => {
      if (!trip) return [];
-     // Just gather all dates from items plus start/end to ensure we have a range
-     const set = new Set([trip.startDate, trip.endDate, ...items.map(i => i.date)].filter(Boolean));
-     return Array.from(set).sort();
-  }, [trip?.startDate, trip?.endDate, items]);
+     const start = parseISO(trip.startDate);
+     const end = parseISO(trip.endDate);
+     const days = differenceInDays(end, start) + 1;
+     return Array.from({ length: Math.max(1, days) }, (_, i) => format(addDays(start, i), 'yyyy-MM-dd'));
+  }, [trip?.startDate, trip?.endDate]);
 
   const displayedItems = useMemo(() => items.filter(i => i.date === selectedDate), [items, selectedDate]);
 
@@ -319,22 +345,31 @@ export function TripDetails() {
         </div>
 
         {/* Large Header Content */}
-        <motion.div style={{ opacity: headerOpacity }} className="absolute bottom-10 left-6 right-6 z-10">
-          <div className="flex items-end justify-between">
-              <div className="flex-1">
-                <div className="inline-flex items-center bg-white/20 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest mb-3 uppercase border border-white/10 backdrop-blur-md">
-                  <Calendar className="w-3.5 h-3.5 mr-2" />
+        <motion.div style={{ opacity: headerOpacity }} className="absolute bottom-6 left-6 right-6 z-10">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-4xl font-black tracking-tighter leading-none text-white drop-shadow-lg break-words line-clamp-2">
+              {trip.title}
+            </h1>
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-white/80 font-black text-[10px] tracking-widest uppercase">
+                  <Calendar className="w-4 h-4" />
                   {trip.startDate.replace(/-/g, '.')} - {trip.endDate.replace(/-/g, '.')}
                 </div>
-                <h1 className="text-4xl font-black tracking-tighter leading-none text-white drop-shadow-md break-words pr-4 line-clamp-2">{trip.title}</h1>
+                {trip.weatherRegion && (
+                  <div className="flex items-center gap-2 text-white/80 font-black text-[10px] tracking-widest uppercase">
+                    <MapPin className="w-4 h-4" />
+                    {trip.weatherRegion}
+                  </div>
+                )}
               </div>
-              
-              <div className="text-right flex flex-col items-end shrink-0">
-                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-100 mb-2">Status</div>
-                 <div className="text-2xl font-black bg-white text-red-500 rounded-2xl px-4 py-2 shadow-lg border-2 border-red-600/20 active:scale-95 cursor-default select-none">
-                   {typeof daysLeft === 'number' ? `D-${daysLeft}` : daysLeft}
-                 </div>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-red-100 mb-2">{t('TripDetails.Status')}</span>
+                <div className="text-2xl font-black bg-white text-red-500 rounded-2xl px-5 py-2.5 shadow-xl border-2 border-red-600/10 active:scale-95 transition-transform select-none">
+                  {typeof daysLeft === 'number' ? t('TripDetails.Countdown', { days: daysLeft }) : daysLeft}
+                </div>
               </div>
+            </div>
           </div>
         </motion.div>
 
@@ -399,7 +434,7 @@ export function TripDetails() {
                  )}
                  <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base font-black text-gray-900">{weather ? getWeatherInfo(weather.code).label : '設定地區以查看天氣'}</span>
+                      <span className="text-base font-black text-gray-900">{weather ? getWeatherInfo(weather.code).label : t('TripDetails.SetRegionForWeather')}</span>
                     </div>
                     <div className="flex items-center text-xs font-black text-sky-500 gap-3">
                       {weather && <span>H: {Math.round(weather.max)}° / L: {Math.round(weather.min)}°</span>}
@@ -522,8 +557,8 @@ export function TripDetails() {
       {/* Edit Trip Component */}
       {isEditingTrip && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border-t-8 border-red-500">
-            <h3 className="text-2xl font-black mb-6 text-gray-900 uppercase tracking-tight">Trip Settings</h3>
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border-t-8 border-red-500 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl font-black mb-6 text-gray-900 uppercase tracking-tight">{t('TripDetails.EditTrip')}</h3>
             <div className="space-y-6">
               <div>
                 <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">Trip Title</label>
@@ -553,18 +588,25 @@ export function TripDetails() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">Weather Region (English)</label>
-                <input 
-                  type="text" 
-                  value={editTripRegion} onChange={e => setEditTripRegion(e.target.value)}
-                  className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner"
-                  placeholder="City, Country (e.g. Tokyo, JP)"
-                />
-                <p className="text-[10px] text-gray-400 mt-2 font-bold ml-2 italic">* used to fetch real-time weather data</p>
+                <label className="text-[10px] font-black text-gray-400 mb-2 block uppercase tracking-[0.2em] ml-2">{t('TripDetails.WeatherSettings')}</label>
+                <select 
+                  value={editTripRegion} 
+                  onChange={e => setEditTripRegion(e.target.value)}
+                  className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent font-bold focus:border-red-400 focus:bg-white outline-none transition-all shadow-inner appearance-none cursor-pointer"
+                >
+                  <option value="">{t('TripDetails.WeatherSettings')}</option>
+                  {weatherLocations.map(loc => (
+                    <option key={loc.value} value={loc.name}>{loc.name}</option>
+                  ))}
+                  <option value="Tokyo">Tokyo (JP)</option>
+                  <option value="Osaka">Osaka (JP)</option>
+                  <option value="Sapporo">Sapporo (JP)</option>
+                </select>
+                <p className="text-[10px] text-gray-400 mt-2 font-bold ml-2 italic">* {t('TripDetails.WeatherSettings')}</p>
               </div>
               <div className="flex gap-4 mt-8">
-                 <button onClick={() => setIsEditingTrip(false)} className="flex-1 py-4 text-gray-400 font-black bg-gray-50 rounded-2xl border-2 border-gray-100 hover:bg-gray-100 transition-colors uppercase text-sm">Cancel</button>
-                 <button onClick={saveEditTrip} disabled={!editTripTitle} className="flex-1 py-4 text-white font-black bg-red-500 border-b-4 border-red-700 rounded-2xl active:translate-y-1 active:border-b-0 transition-all uppercase text-sm shadow-lg shadow-red-100">Confirm</button>
+                 <button onClick={() => setIsEditingTrip(false)} className="flex-1 py-4 text-gray-400 font-black bg-gray-50 rounded-2xl border-2 border-gray-100 hover:bg-gray-100 transition-colors uppercase text-sm">{t('Common.Cancel')}</button>
+                 <button onClick={saveEditTrip} disabled={!editTripTitle} className="flex-1 py-4 text-white font-black bg-red-500 border-b-4 border-red-700 rounded-2xl active:translate-y-1 active:border-b-0 transition-all uppercase text-sm shadow-lg shadow-red-100">{t('Common.Confirm')}</button>
               </div>
             </div>
           </div>
@@ -574,15 +616,15 @@ export function TripDetails() {
       {/* Form Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl animate-in slide-in-from-bottom pb-safe max-h-[90vh] overflow-y-auto border-t-4 border-sky-400">
+          <div className="bg-white w-full max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl animate-in slide-in-from-bottom pb-safe max-h-[90vh] overflow-y-auto border-t-4 border-sky-400 text-gray-900">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-extrabold text-gray-900">{editingItem ? '編輯行程 (共同編輯)' : '新增行程'}</h3>
-              <button className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full text-gray-500 font-bold" onClick={() => setShowModal(false)}>✕</button>
+              <h3 className="text-xl font-extrabold">{editingItem ? t('TripDetails.EditItem') : t('TripDetails.AddItem')}</h3>
+              <button className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full text-gray-400 font-bold" onClick={() => setShowModal(false)}>✕</button>
             </div>
 
             <div className="space-y-4">
                <div>
-                  <label className="text-xs font-bold text-gray-400 mb-1 block">分類</label>
+                  <label className="text-xs font-bold text-gray-400 mb-1 block">{t('TripDetails.Category')}</label>
                   <div className="flex flex-wrap gap-2">
                      {Object.keys(CATEGORY_STYLES).map(cat => (
                         <button 
@@ -597,29 +639,29 @@ export function TripDetails() {
                </div>
 
                <div>
-                  <label className="text-xs font-bold text-gray-400 block mb-1">行程標題 <span className="text-red-500">*</span></label>
-                  <input autoFocus type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" placeholder="例如：淺草寺參拜" />
+                  <label className="text-xs font-bold text-gray-400 block mb-1">{t('TripDetails.ItemTitle')} <span className="text-red-500">*</span></label>
+                  <input autoFocus type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" placeholder="Asakusa Sensoji" />
                </div>
 
                <div className="grid grid-cols-2 gap-4">
                  <div>
-                    <label className="text-xs font-bold text-gray-400 block mb-1">日期 <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">{t('TripDetails.Date')} <span className="text-red-500">*</span></label>
                     <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" />
                  </div>
                  <div>
-                    <label className="text-xs font-bold text-gray-400 block mb-1">時間</label>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">{t('TripDetails.Time')}</label>
                     <input type="time" value={formStartTime} onChange={e => setFormStartTime(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" />
                  </div>
                </div>
 
                <div>
-                  <label className="text-xs font-bold text-gray-400 block mb-1">Google地圖位置</label>
-                  <input type="text" value={formLocation} onChange={e => setFormLocation(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" placeholder="輸入地點，方便直接導航" />
+                  <label className="text-xs font-bold text-gray-400 block mb-1">{t('TripDetails.Location')}</label>
+                  <input type="text" value={formLocation} onChange={e => setFormLocation(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors" placeholder="Google Maps Location" />
                </div>
 
                <div>
-                  <label className="text-xs font-bold text-gray-400 block mb-1">備註</label>
-                  <textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors min-h-[100px] resize-none" placeholder="要買什麼、吃什麼..."></textarea>
+                  <label className="text-xs font-bold text-gray-400 block mb-1">{t('TripDetails.Notes')}</label>
+                  <textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} className="w-full bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-200 outline-none focus:border-sky-400 font-bold transition-colors min-h-[100px] resize-none" placeholder="Buy something, eat something..."></textarea>
                </div>
                
                <div className="flex gap-3 mt-8 pt-4 border-t-2 border-gray-100">
@@ -629,7 +671,7 @@ export function TripDetails() {
                    </button>
                  )}
                  <button onClick={handleSave} disabled={!formTitle.trim() || !formDate} className="flex-1 py-4 text-gray-900 font-black bg-yellow-400 border-2 border-yellow-500 rounded-2xl shadow-[0_4px_0_0_rgb(234,179,8)] active:translate-y-1 active:shadow-none transition-all disabled:opacity-50">
-                   {editingItem ? '儲存修改 / 同步' : '新增行程'}
+                   {editingItem ? t('TripDetails.SaveEdit') : t('TripDetails.AddItem')}
                  </button>
                </div>
             </div>

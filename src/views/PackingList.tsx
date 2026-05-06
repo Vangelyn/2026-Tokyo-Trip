@@ -1,23 +1,23 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
-import { ChevronLeft, Check, Plus, Trash2, Edit2, Minus } from 'lucide-react';
+import { ChevronLeft, Check, Plus, Trash2, Edit2, Minus, UserCheck, Package } from 'lucide-react';
 import { cn } from '../lib/utils';
-
-// We import DEFAULT_ITEMS from inside since it's long. I'll just use what was already here.
+import { useTranslation } from 'react-i18next';
 
 interface PackingItem {
   id: string;
   category: string;
   name: string;
-  checked: boolean;
   userId: string; 
   quantity?: number;
+  claimedBy?: string | null;
+  checkedUsers?: Record<string, boolean>; // Independent check status
 }
 
-const DEFAULT_ITEMS: Omit<PackingItem, 'id' | 'checked' | 'userId'>[] = [
+const DEFAULT_ITEMS: Omit<PackingItem, 'id' | 'userId'>[] = [
   { category: '重要物品類', name: '網路(ESIM)' }, { category: '重要物品類', name: '保險(旅平/不便險)' }, { category: '重要物品類', name: '護照/日鈔/交通卡' },
   { category: '隨身小物', name: '護唇/護手霜' }, { category: '隨身小物', name: '雨傘/雨衣' }, { category: '隨身小物', name: '充氣頸枕' },
   { category: '環保類', name: '水壺(飲料提袋)' }, { category: '環保類', name: '環保袋' },
@@ -31,19 +31,39 @@ const DEFAULT_ITEMS: Omit<PackingItem, 'id' | 'checked' | 'userId'>[] = [
 ];
 
 export function PackingList() {
+  const { t } = useTranslation();
   const { tripId } = useParams();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [items, setItems] = useState<PackingItem[]>([]);
+  const [membersMap, setMembersMap] = useState<Record<string, any>>({});
   const [showAdd, setShowAdd] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemCat, setNewItemCat] = useState('其他');
+  const [newItemQty, setNewItemQty] = useState(1);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
 
   useEffect(() => {
     if (!tripId || !user) return;
+
+    // Fetch members to show avatars
+    const fetchMembers = async () => {
+      const tripRef = doc(db, 'trips', tripId);
+      const tripSnap = await getDoc(tripRef);
+      if (tripSnap.exists()) {
+        const data = tripSnap.data();
+        const map: Record<string, any> = {};
+        for (const uid of data.memberIds || []) {
+          const uSnap = await getDoc(doc(db, 'users', uid));
+          if (uSnap.exists()) map[uid] = uSnap.data();
+        }
+        setMembersMap(map);
+      }
+    };
+    fetchMembers();
+
     const q = query(collection(db, `trips/${tripId}/packing`));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetched: PackingItem[] = [];
@@ -66,10 +86,11 @@ export function PackingList() {
            addDoc(collection(db, `trips/${tripId}/packing`), {
              category: item.category,
              name: item.name,
-             checked: false,
              quantity: item.quantity || 1,
              userId: user.uid,
-             createdAt: Date.now()
+             createdAt: Date.now(),
+             checkedUsers: {},
+             claimedBy: null
            })
          );
       }
@@ -80,9 +101,24 @@ export function PackingList() {
   };
 
   const toggleItem = async (item: PackingItem) => {
+    if (!user) return;
+    try {
+      const checkedUsers = { ...(item.checkedUsers || {}) };
+      checkedUsers[user.uid] = !checkedUsers[user.uid];
+      
+      await updateDoc(doc(db, `trips/${tripId}/packing/${item.id}`), {
+        checkedUsers
+      });
+    } catch (error) {
+       handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}/packing`);
+    }
+  };
+
+  const toggleClaim = async (item: PackingItem) => {
+    if (!user) return;
     try {
       await updateDoc(doc(db, `trips/${tripId}/packing/${item.id}`), {
-        checked: !item.checked
+        claimedBy: item.claimedBy === user.uid ? null : user.uid
       });
     } catch (error) {
        handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}/packing`);
@@ -116,6 +152,7 @@ export function PackingList() {
   };
 
   const deleteItem = async (id: string) => {
+    if (!confirm(t('PackingList.ConfirmDelete'))) return;
     try {
       await deleteDoc(doc(db, `trips/${tripId}/packing/${id}`));
     } catch (error) {
@@ -129,12 +166,14 @@ export function PackingList() {
       await addDoc(collection(db, `trips/${tripId}/packing`), {
         category: newItemCat,
         name: newItemName.trim(),
-        checked: false,
-        quantity: 1,
+        quantity: (newItemCat.includes('衣物')) ? newItemQty : 1,
         userId: user.uid,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        checkedUsers: {},
+        claimedBy: null
       });
       setNewItemName('');
+      setNewItemQty(1);
       setShowAdd(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `trips/${tripId}/packing`);
@@ -142,103 +181,147 @@ export function PackingList() {
   };
 
   const categories = Array.from(new Set(items.map(i => i.category)));
-  const progress = items.length === 0 ? 0 : Math.round((items.filter(i => i.checked).length / items.length) * 100);
+  const userCheckedCount = useMemo(() => items.filter(i => i.checkedUsers?.[user?.uid || '']).length, [items, user?.uid]);
+  const progress = items.length === 0 ? 0 : Math.round((userCheckedCount / items.length) * 100);
 
   return (
     <div className="flex flex-col h-full bg-green-50">
-      <div className="bg-green-500 pt-12 pb-6 px-6 text-white rounded-b-[2rem] shadow-sm z-10 relative">
+      <div className="bg-green-500 pt-12 pb-6 px-6 text-white rounded-b-[2.5rem] shadow-lg z-10 relative shrink-0">
         <div className="flex justify-between items-center mb-6">
           <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md active:scale-95 transition-transform">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold tracking-tight">行李清單</h1>
+          <h1 className="text-xl font-bold tracking-tight">{t('PackingList.Title')}</h1>
           <div className="w-10 h-10"></div>
         </div>
 
-        <div>
-          <div className="flex justify-between text-sm mb-2 font-bold">
-             <span>完成進度</span>
-             <span>{progress}%</span>
+        <div className="bg-white/10 p-5 rounded-[2rem] border border-white/20 backdrop-blur-md">
+          <div className="flex justify-between text-xs mb-2 font-black uppercase tracking-widest text-green-50">
+             <span>{t('PackingList.Progress')}</span>
+             <span>{userCheckedCount} / {items.length} ({progress}%)</span>
           </div>
-          <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden backdrop-blur-sm shadow-inner border border-white/10">
-             <div className="h-full bg-yellow-400 rounded-full transition-all duration-500 shadow-sm" style={{ width: `${progress}%` }}></div>
+          <div className="w-full h-4 bg-black/20 rounded-full overflow-hidden backdrop-blur-sm shadow-inner border border-white/5">
+             <div className="h-full bg-yellow-400 rounded-full transition-all duration-700 shadow-[0_0_15px_rgba(234,179,8,0.5)]" style={{ width: `${progress}%` }}></div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 pb-24 space-y-8">
+      <div className="flex-1 overflow-y-auto px-6 py-6 pb-32 space-y-8">
         {items.length === 0 ? (
-          <div className="text-center py-10 mt-10 bg-white rounded-[2rem] border-2 border-dashed border-gray-200">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-200">
-              <Check className="w-8 h-8 text-green-500" />
+          <div className="text-center py-16 mt-10 bg-white rounded-[3rem] border-2 border-dashed border-gray-200 shadow-sm px-6">
+            <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-100">
+              <Package className="w-12 h-12 text-green-200" />
             </div>
-             <p className="text-gray-500 mb-6 font-bold">清單空空如也！</p>
-             <button onClick={loadDefaults} className="bg-yellow-400 text-gray-900 border-2 border-yellow-500 font-black px-6 py-3 rounded-full hover:bg-yellow-500 active:translate-y-1 shadow-[0_4px_0_0_rgb(234,179,8)] active:shadow-none transition-all">
-               自動載入建議範本
+             <p className="text-gray-400 mb-8 font-black text-lg">{t('PackingList.NoItems')}</p>
+             <button onClick={loadDefaults} className="bg-yellow-400 text-gray-900 border-2 border-yellow-500 font-black px-10 py-4 rounded-full hover:bg-yellow-500 active:translate-y-1 shadow-[0_6px_0_0_rgb(234,179,8)] active:shadow-none transition-all uppercase tracking-tight">
+               {t('PackingList.LoadDefaults')}
              </button>
           </div>
         ) : (
-          <div>
+          <div className="space-y-10">
             {categories.map(cat => {
                const catItems = items.filter(i => i.category === cat);
-               const isClothing = cat === '衣物類' || cat === '換季保暖衣物類';
+               const isClothing = cat.includes('衣物');
                return (
-                 <div key={cat} className="mb-6">
-                   <h3 className="text-sm font-black text-gray-700 uppercase tracking-widest ml-4 mb-2 flex items-center gap-2">
-                     <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                 <div key={cat} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                   <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.2em] ml-5 mb-4 flex items-center gap-3">
+                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm"></span>
                      {cat}
                    </h3>
-                   <div className="bg-white rounded-[1.5rem] overflow-hidden shadow-[0_5px_15px_-5px_rgba(0,0,0,0.05)] border-2 border-gray-100">
-                     {catItems.map((item, idx, arr) => (
-                       <div key={item.id} className={cn("flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3", idx !== arr.length - 1 && "border-b border-gray-50")}>
-                         
-                         <div className="flex items-center flex-1 pr-4">
-                            <button 
-                              onClick={() => toggleItem(item)}
-                              className={cn("w-7 h-7 rounded border-2 flex items-center justify-center mr-3 transition-colors shrink-0", item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300 bg-gray-50")}
-                            >
-                              {item.checked && <Check className="w-4 h-4 font-bold" />}
-                            </button>
+                   <div className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] border-2 border-gray-50">
+                     {catItems.map((item, idx, arr) => {
+                        const isChecked = item.checkedUsers?.[user?.uid || ''] || false;
+                        const claimedByMe = item.claimedBy === user?.uid;
+                        const claimer = item.claimedBy ? membersMap[item.claimedBy] : null;
+                        const isClothingItem = String(cat).includes('衣物');
+
+                        return (
+                          <div key={item.id} className={cn("flex flex-col p-5 gap-3 transition-all", idx !== arr.length - 1 && "border-b border-gray-50", isChecked && "bg-gray-50/30")}>
                             
-                            {editingId === item.id ? (
-                               <input 
-                                 autoFocus
-                                 value={editingName} 
-                                 onChange={e => setEditingName(e.target.value)}
-                                 onBlur={() => saveEditName(item)}
-                                 onKeyDown={e => e.key === 'Enter' && saveEditName(item)}
-                                 className="flex-1 bg-gray-50 border-2 border-green-300 rounded-lg px-2 py-1 outline-none text-gray-900 font-bold font-sm"
-                               />
-                            ) : (
-                               <span 
-                                 onClick={() => { setEditingId(item.id); setEditingName(item.name); }}
-                                 className={cn("text-gray-800 font-bold cursor-text underline-offset-4 hover:underline", item.checked && "text-gray-400 line-through decoration-gray-300")}
-                               >
-                                 {item.name}
-                               </span>
+                            <div className="flex items-start justify-between gap-3">
+                               <div className="flex items-start flex-1 gap-4">
+                                  <button 
+                                    onClick={() => toggleItem(item)}
+                                    className={cn("w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 shadow-sm", isChecked ? "bg-green-500 border-green-600 text-white scale-105" : "border-gray-200 bg-white active:scale-95")}
+                                  >
+                                    {isChecked && <Check className="w-5 h-5 stroke-[3]" />}
+                                  </button>
+                                  
+                                  <div className="flex-1">
+                                    {editingId === item.id ? (
+                                       <input 
+                                         autoFocus
+                                         value={editingName} 
+                                         onChange={e => setEditingName(e.target.value)}
+                                         onBlur={() => saveEditName(item)}
+                                         onKeyDown={e => e.key === 'Enter' && saveEditName(item)}
+                                         className="w-full bg-gray-50 border-2 border-green-300 rounded-xl px-3 py-1.5 outline-none text-gray-900 font-bold text-base shadow-inner"
+                                       />
+                                    ) : (
+                                       <div className="flex flex-wrap items-center gap-2">
+                                          <span 
+                                            onClick={() => { setEditingId(item.id); setEditingName(item.name); }}
+                                            className={cn("text-gray-800 font-black text-lg cursor-text hover:text-green-600 transition-colors", isChecked && "text-gray-300 line-through decoration-gray-200")}
+                                          >
+                                            {item.name}
+                                          </span>
+                                          {item.quantity && item.quantity > 1 && (
+                                            <span className="text-[10px] font-black bg-gray-100 text-gray-400 px-2 py-0.5 rounded-lg border border-gray-200">
+                                              x{item.quantity}
+                                            </span>
+                                          )}
+                                       </div>
+                                    )}
+                                    
+                                    {/* Claim Display */}
+                                    <div className="flex items-center gap-3 mt-2">
+                                       <button 
+                                          onClick={() => toggleClaim(item)}
+                                          className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm", 
+                                            claimedByMe ? "bg-red-500 border-red-600 text-white" : "bg-white border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-400")}
+                                       >
+                                          <UserCheck className="w-3.5 h-3.5" />
+                                          {claimedByMe ? t('PackingList.Claimed') : t('PackingList.Claim')}
+                                       </button>
+                                       {claimer && !claimedByMe && (
+                                          <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                             <div className="w-6 h-6 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-100">
+                                                {claimer.photoURL ? <img src={claimer.photoURL} className="w-full h-full object-cover" /> : <span className="text-[8px] flex h-full items-center justify-center font-bold">{claimer.displayName?.charAt(0)}</span>}
+                                             </div>
+                                             <span className="text-[10px] font-bold text-gray-400">{claimer.displayName} {t('PackingList.HasClaimed')}</span>
+                                          </div>
+                                       )}
+                                    </div>
+                                  </div>
+                               </div>
+
+                               <div className="flex items-center gap-2">
+                                  <button onClick={() => deleteItem(item.id)} className="w-9 h-9 flex items-center justify-center rounded-2xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all border border-red-100 shadow-sm active:scale-90">
+                                    <Trash2 className="w-4.5 h-4.5" />
+                                  </button>
+                               </div>
+                            </div>
+
+                            {/* Conditional Quantity Controls for list */}
+                            {isClothingItem && !editingId && (
+                               <div className="flex items-center justify-end animate-in fade-in duration-500 pr-2">
+                                 <div className="flex items-center bg-gray-50 rounded-2xl border-2 border-gray-100 p-1 shadow-inner gap-1">
+                                   <button onClick={() => updateQuantity(item, -1)} className="w-7 h-7 flex items-center justify-center rounded-xl bg-white shadow-sm text-gray-400 border border-gray-100 active:scale-90 transition-transform">
+                                      <Minus className="w-4 h-4" />
+                                   </button>
+                                   <div className="w-10 flex flex-col items-center">
+                                      <span className="text-xs font-black text-gray-700">{item.quantity || 1}</span>
+                                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter leading-none italic">{t('PackingList.Qty')}</span>
+                                   </div>
+                                   <button onClick={() => updateQuantity(item, 1)} className="w-7 h-7 flex items-center justify-center rounded-xl bg-white shadow-sm text-gray-400 border border-gray-100 active:scale-90 transition-transform">
+                                      <Plus className="w-4 h-4" />
+                                   </button>
+                                 </div>
+                               </div>
                             )}
-                         </div>
-
-                         <div className="flex items-center justify-between sm:justify-end shrink-0 pl-10 sm:pl-0">
-                            {isClothing && (
-                              <div className="flex items-center bg-gray-100 rounded-full border border-gray-200 p-0.5 mr-4 shadow-inner">
-                                <button onClick={() => updateQuantity(item, -1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white shadow-sm text-gray-500 border border-gray-200">
-                                   <Minus className="w-3.5 h-3.5" />
-                                </button>
-                                <span className="w-8 text-center font-bold text-xs text-gray-700">{item.quantity || 1}</span>
-                                <button onClick={() => updateQuantity(item, 1)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white shadow-sm text-gray-500 border border-gray-200">
-                                   <Plus className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )}
-
-                            <button onClick={() => deleteItem(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-50 text-red-500 hover:bg-red-100 transition-colors border border-red-100">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                         </div>
-
-                       </div>
-                     ))}
+                          </div>
+                        )
+                     })}
                    </div>
                  </div>
                )
@@ -247,45 +330,61 @@ export function PackingList() {
         )}
       </div>
 
-      <div className="absolute bottom-28 right-6">
+      {/* FAB */}
+      {!showAdd && (
         <button 
           onClick={() => setShowAdd(true)}
-          className="w-14 h-14 bg-green-500 text-white rounded-full flex items-center justify-center border-2 border-green-600 shadow-[0_8px_0_0_rgb(22,163,74)] active:translate-y-2 active:shadow-none transition-all z-20"
+          className="fixed bottom-6 right-6 w-16 h-16 bg-green-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
         >
-          <Plus className="w-7 h-7" />
+          <Plus className="w-8 h-8" strokeWidth={3} />
         </button>
-      </div>
+      )}
 
       {showAdd && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-end justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl animate-in slide-in-from-bottom border-t-4 border-green-500">
-            <h3 className="text-xl font-extrabold mb-4 text-gray-900">新增物品</h3>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-t-[3rem] sm:rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom border-t-8 border-green-500 max-h-[85vh] overflow-y-auto pb-safe">
+            <h3 className="text-2xl font-black mb-8 text-gray-900 leading-tight">{t('PackingList.AddItem')}</h3>
+            <div className="space-y-6">
                <div>
-                  <label className="text-xs font-bold text-gray-400 mb-1 block">分類</label>
+                  <label className="text-[10px] font-black text-gray-400 mb-3 block uppercase tracking-[0.2em] ml-2">Category</label>
                   <select 
                     value={newItemCat} 
                     onChange={e => setNewItemCat(e.target.value)}
-                    className="w-full bg-gray-50 p-4 rounded-2xl mt-1 border-2 border-gray-100 outline-none font-bold text-gray-700 focus:border-green-400"
+                    className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent outline-none font-black text-gray-700 focus:border-green-400 focus:bg-white transition-all shadow-inner appearance-none cursor-pointer"
                   >
                      {['重要物品類', '隨身小物', '環保類', '3C類', '衣物類', '換季保暖衣物類', '洗漱保養類', '外出類', '化妝類', '旅行備用小物', '其他'].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                </div>
                <div>
-                  <label className="text-xs font-bold text-gray-400 mb-1 block">物品名稱</label>
+                  <label className="text-[10px] font-black text-gray-400 mb-3 block uppercase tracking-[0.2em] ml-2">Item Name</label>
                   <input 
                     autoFocus
                     type="text" 
                     value={newItemName} 
                     onChange={e => setNewItemName(e.target.value)}
-                    className="w-full bg-gray-50 p-4 rounded-2xl mt-1 border-2 border-gray-100 outline-none font-bold focus:border-green-400"
-                    placeholder="輸入物品名稱"
+                    className="w-full bg-gray-50 p-4 rounded-2xl border-2 border-transparent outline-none font-black focus:border-green-400 focus:bg-white transition-all shadow-inner"
+                    placeholder="Enter item name..."
                   />
                </div>
+
+               {newItemCat.includes('衣物') && (
+                  <div className="animate-in slide-in-from-top-4 duration-300">
+                    <label className="text-[10px] font-black text-gray-400 mb-3 block uppercase tracking-[0.2em] ml-2">{t('PackingList.Qty')}</label>
+                    <div className="flex items-center bg-gray-50 rounded-2xl border-2 border-transparent p-2 shadow-inner gap-4 px-6 focus-within:border-green-400 focus-within:bg-white transition-all">
+                      <button onClick={() => setNewItemQty(Math.max(1, newItemQty - 1))} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-gray-400 border border-gray-100 active:scale-90 transition-transform">
+                          <Minus className="w-5 h-5" />
+                      </button>
+                      <span className="flex-1 text-center font-black text-xl text-gray-700">{newItemQty}</span>
+                      <button onClick={() => setNewItemQty(newItemQty + 1)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-gray-400 border border-gray-100 active:scale-90 transition-transform">
+                          <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+               )}
                
-               <div className="flex gap-3 mt-6 pt-4 border-t-2 border-gray-50">
-                 <button onClick={() => setShowAdd(false)} className="flex-1 py-4 text-gray-400 font-bold bg-gray-100 rounded-2xl border-2 border-gray-200">取消</button>
-                 <button onClick={addItem} disabled={!newItemName.trim()} className="flex-1 py-4 text-gray-900 font-black bg-yellow-400 border-2 border-yellow-500 rounded-2xl shadow-[0_4px_0_0_rgb(234,179,8)] disabled:opacity-50 active:translate-y-1 active:shadow-none">新增</button>
+               <div className="flex gap-4 mt-8">
+                 <button onClick={() => setShowAdd(false)} className="flex-1 py-4 text-gray-400 font-black bg-gray-50 rounded-2xl border-2 border-gray-100 hover:bg-gray-100 transition-colors uppercase text-sm">{t('Common.Cancel')}</button>
+                 <button onClick={addItem} disabled={!newItemName.trim()} className="flex-1 py-4 text-white font-black bg-green-500 border-b-4 border-green-700 rounded-2xl active:translate-y-1 active:border-b-0 transition-all uppercase text-sm shadow-lg shadow-green-100">{t('Common.Confirm')}</button>
                </div>
             </div>
           </div>
