@@ -548,7 +548,7 @@ export function TripDetails() {
       {selectedDate && (
          <button 
            onClick={() => openModal()} 
-           className="absolute bottom-6 right-6 w-16 h-16 bg-red-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(239,68,68,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+           className="absolute bottom-28 right-6 w-16 h-16 bg-red-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(239,68,68,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
          >
            <Plus className="w-8 h-8" strokeWidth={3} />
          </button>

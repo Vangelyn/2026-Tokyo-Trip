@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AuthContext } from '../App';
-import { ChevronLeft, Check, Plus, Trash2, Edit2, Minus, UserCheck, Package } from 'lucide-react';
+import { ChevronLeft, Check, Plus, Trash2, Edit2, Minus, Package } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -13,7 +13,6 @@ interface PackingItem {
   name: string;
   userId: string; 
   quantity?: number;
-  claimedBy?: string | null;
   checkedUsers?: Record<string, boolean>; // Independent check status
 }
 
@@ -89,8 +88,7 @@ export function PackingList() {
              quantity: item.quantity || 1,
              userId: user.uid,
              createdAt: Date.now(),
-             checkedUsers: {},
-             claimedBy: null
+             checkedUsers: {}
            })
          );
       }
@@ -103,22 +101,9 @@ export function PackingList() {
   const toggleItem = async (item: PackingItem) => {
     if (!user) return;
     try {
-      const checkedUsers = { ...(item.checkedUsers || {}) };
-      checkedUsers[user.uid] = !checkedUsers[user.uid];
-      
+      const isChecked = item.checkedUsers?.[user.uid] || false;
       await updateDoc(doc(db, `trips/${tripId}/packing/${item.id}`), {
-        checkedUsers
-      });
-    } catch (error) {
-       handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}/packing`);
-    }
-  };
-
-  const toggleClaim = async (item: PackingItem) => {
-    if (!user) return;
-    try {
-      await updateDoc(doc(db, `trips/${tripId}/packing/${item.id}`), {
-        claimedBy: item.claimedBy === user.uid ? null : user.uid
+        [`checkedUsers.${user.uid}`]: !isChecked
       });
     } catch (error) {
        handleFirestoreError(error, OperationType.UPDATE, `trips/${tripId}/packing`);
@@ -169,8 +154,7 @@ export function PackingList() {
         quantity: (newItemCat.includes('衣物')) ? newItemQty : 1,
         userId: user.uid,
         createdAt: Date.now(),
-        checkedUsers: {},
-        claimedBy: null
+        checkedUsers: {}
       });
       setNewItemName('');
       setNewItemQty(1);
@@ -185,7 +169,7 @@ export function PackingList() {
   const progress = items.length === 0 ? 0 : Math.round((userCheckedCount / items.length) * 100);
 
   return (
-    <div className="flex flex-col h-full bg-green-50">
+    <div className="flex flex-col h-full bg-green-50 relative overflow-hidden">
       <div className="bg-green-500 pt-12 pb-6 px-6 text-white rounded-b-[2.5rem] shadow-lg z-10 relative shrink-0">
         <div className="flex justify-between items-center mb-6">
           <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md active:scale-95 transition-transform">
@@ -219,9 +203,9 @@ export function PackingList() {
           </div>
         ) : (
           <div className="space-y-10">
-            {categories.map(cat => {
+            {categories.map((cat: any) => {
                const catItems = items.filter(i => i.category === cat);
-               const isClothing = cat.includes('衣物');
+               const isClothing = String(cat).includes('衣物');
                return (
                  <div key={cat} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.2em] ml-5 mb-4 flex items-center gap-3">
@@ -231,9 +215,8 @@ export function PackingList() {
                    <div className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] border-2 border-gray-50">
                      {catItems.map((item, idx, arr) => {
                         const isChecked = item.checkedUsers?.[user?.uid || ''] || false;
-                        const claimedByMe = item.claimedBy === user?.uid;
-                        const claimer = item.claimedBy ? membersMap[item.claimedBy] : null;
                         const isClothingItem = String(cat).includes('衣物');
+                        const checkedUserEntries = Object.entries(item.checkedUsers || {}).filter(([_, val]) => val);
 
                         return (
                           <div key={item.id} className={cn("flex flex-col p-5 gap-3 transition-all", idx !== arr.length - 1 && "border-b border-gray-50", isChecked && "bg-gray-50/30")}>
@@ -273,25 +256,26 @@ export function PackingList() {
                                        </div>
                                     )}
                                     
-                                    {/* Claim Display */}
-                                    <div className="flex items-center gap-3 mt-2">
-                                       <button 
-                                          onClick={() => toggleClaim(item)}
-                                          className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all shadow-sm", 
-                                            claimedByMe ? "bg-red-500 border-red-600 text-white" : "bg-white border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-400")}
-                                       >
-                                          <UserCheck className="w-3.5 h-3.5" />
-                                          {claimedByMe ? t('PackingList.Claimed') : t('PackingList.Claim')}
-                                       </button>
-                                       {claimer && !claimedByMe && (
-                                          <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                             <div className="w-6 h-6 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-100">
-                                                {claimer.photoURL ? <img src={claimer.photoURL} className="w-full h-full object-cover" /> : <span className="text-[8px] flex h-full items-center justify-center font-bold">{claimer.displayName?.charAt(0)}</span>}
-                                             </div>
-                                             <span className="text-[10px] font-bold text-gray-400">{claimer.displayName} {t('PackingList.HasClaimed')}</span>
-                                          </div>
-                                       )}
-                                    </div>
+                                    {/* Checked Users Avatars */}
+                                    {checkedUserEntries.length > 0 && (
+                                       <div className="flex -space-x-2 mt-2 animate-in fade-in zoom-in duration-300">
+                                          {checkedUserEntries.map(([uid]) => {
+                                             const member = membersMap[uid];
+                                             if (!member) return null;
+                                             return (
+                                                <div key={uid} className="w-6 h-6 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-100" title={member.displayName}>
+                                                   {member.photoURL ? (
+                                                      <img src={member.photoURL} className="w-full h-full object-cover" />
+                                                   ) : (
+                                                      <span className="text-[8px] flex h-full items-center justify-center font-bold text-gray-500">
+                                                         {member.displayName?.charAt(0)}
+                                                      </span>
+                                                   )}
+                                                </div>
+                                             );
+                                          })}
+                                       </div>
+                                    )}
                                   </div>
                                </div>
 
@@ -334,7 +318,7 @@ export function PackingList() {
       {!showAdd && (
         <button 
           onClick={() => setShowAdd(true)}
-          className="fixed bottom-6 right-6 w-16 h-16 bg-green-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+          className="absolute bottom-28 right-6 w-16 h-16 bg-green-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
         >
           <Plus className="w-8 h-8" strokeWidth={3} />
         </button>

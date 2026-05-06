@@ -9,31 +9,25 @@ const PORT = 3000;
 
 app.use(express.json());
 
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execPromise = promisify(exec);
+
 // API: Exchange Rates from Bank of Taiwan
 app.get("/api/rates", async (req, res) => {
   try {
-    const response = await axios.get("https://rate.bot.com.tw/xrt?Lang=zh-TW", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-      }
-    });
-    const $ = cheerio.load(response.data);
-    const rates: Record<string, number> = { TWD: 1 };
+    const { stdout } = await execPromise("python3 scripts/fetch_rates.py");
+    const result = JSON.parse(stdout);
+    
+    if (result.error) {
+      throw new Error(result.error);
+    }
 
-    $("table tbody tr").each((_, element) => {
-      const currencyText = $(element).find(".visible-phone").text().trim();
-      const spotSellRate = $(element).find("td[data-table='本行即期賣出']").text().trim();
-      
-      const currencyCodeMatch = currencyText.match(/\(([A-Z]+)\)/);
-      if (currencyCodeMatch && spotSellRate && spotSellRate !== "-") {
-        rates[currencyCodeMatch[1]] = parseFloat(spotSellRate);
-      }
-    });
-
-    res.json({ rates, updatedAt: new Date().toISOString() });
+    res.json({ rates: result.rates, updatedAt: new Date().toISOString() });
   } catch (error) {
     console.error("Fetch rates error:", error);
-    res.status(500).json({ error: "Failed to fetch exchange rates" });
+    res.status(500).json({ error: "Failed to fetch exchange rates via python" });
   }
 });
 

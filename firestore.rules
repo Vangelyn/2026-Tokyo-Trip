@@ -159,12 +159,12 @@ service cloud.firestore {
 
       // Packing List
       function isValidPackingItem(data) {
-        return data.keys().hasAll(['category', 'name', 'checked', 'userId', 'createdAt'])
-          && data.keys().size() <= 6
+        return data.keys().hasAll(['category', 'name', 'userId', 'createdAt'])
+          && data.keys().size() <= 7
           && data.category is string && data.category.size() <= 50
           && data.name is string && data.name.size() <= 150
-          && data.checked is bool
           && (data.get('quantity', 0) is number)
+          && (data.get('checkedUsers', {}).size() <= 20)
           && data.userId is string && data.userId.size() <= 128
           && data.createdAt is number;
       }
@@ -175,7 +175,9 @@ service cloud.firestore {
           && isValidPackingItem(incoming());
         allow update: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId)
           && isValidPackingItem(incoming())
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'checked', 'quantity']);
+          && (
+             incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'checkedUsers', 'quantity'])
+          );
         allow delete: if isAuth() && isValidId(tripId) && isValidId(itemId) && canAccessSub(tripId);
       }
     }

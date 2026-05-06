@@ -47,8 +47,8 @@ export function Bookkeeping() {
     const fetchRates = async () => {
       try {
         const res = await axios.get('/api/rates');
-        if (res.data && res.data.jpy_twd) {
-           setJpyToTwdRate(res.data.jpy_twd);
+        if (res.data && res.data.rates && res.data.rates.JPY) {
+           setJpyToTwdRate(res.data.rates.JPY);
         }
       } catch (e) {
         console.error("Failed to fetch rates", e);
@@ -301,7 +301,7 @@ export function Bookkeeping() {
       {!showInitialModal && (
         <button 
           onClick={() => setShowAdd(true)}
-          className="fixed bottom-6 right-6 w-16 h-16 bg-emerald-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
+          className="absolute bottom-28 right-6 w-16 h-16 bg-emerald-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-[0_12px_25px_-10px_rgba(16,185,129,0.5)] active:scale-90 transition-all z-[60] border-t border-white/20 active:translate-y-1"
         >
           <Plus className="w-8 h-8" strokeWidth={3} />
         </button>
