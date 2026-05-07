@@ -59,6 +59,11 @@ const TAIWAN_LOCATIONS = [
   { name: '澎湖縣', value: 'Penghu' },
   { name: '金門縣', value: 'Kinmen' },
   { name: '連江縣', value: 'Matsu' },
+  { name: 'Tokyo (東京)', value: 'Tokyo' },
+  { name: 'Osaka (大阪)', value: 'Osaka' },
+  { name: 'Sapporo (札幌)', value: 'Sapporo' },
+  { name: 'Kyoto (京都)', value: 'Kyoto' },
+  { name: 'Seoul (首爾)', value: 'Seoul' },
 ];
 
 const COMMON_COORDINATES: Record<string, { lat: number, lng: number }> = {
@@ -86,6 +91,7 @@ const COMMON_COORDINATES: Record<string, { lat: number, lng: number }> = {
   'matsu': { lat: 26.1505, lng: 119.9328 },
   'tokyo': { lat: 35.6762, lng: 139.6503 },
   'osaka': { lat: 34.6937, lng: 135.5023 },
+  'sapporo': { lat: 43.0618, lng: 141.3545 },
   'kyoto': { lat: 35.0116, lng: 135.7681 },
   'seoul': { lat: 37.5665, lng: 126.9780 },
   'bangkok': { lat: 13.7563, lng: 100.5018 },

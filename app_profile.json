@@ -1,0 +1,68 @@
+{
+  "projectInfo": {
+    "name": "Tokyo Travel Pal",
+    "version": "1.0.0",
+    "description": "A comprehensive travel companion for Tokyo trips, featuring weather alerts, currency conversion, and itinerary management."
+  },
+  "technologies": [
+    {
+      "name": "TypeScript",
+      "role": "Core programming language ensuring reliability and type safety across the full stack."
+    },
+    {
+      "name": "React",
+      "role": "Frontend library used to build the interactive, component-based user interface."
+    },
+    {
+      "name": "Vite",
+      "role": "Modern build tool that provides fast development and optimized production bundles."
+    },
+    {
+      "name": "Tailwind CSS",
+      "role": "Utility-first CSS framework for rapid and responsive UI styling."
+    },
+    {
+      "name": "Express.ts",
+      "role": "Backend server framework managing API routes and serving the application."
+    },
+    {
+      "name": "Firebase",
+      "role": "Serverless backend provides secure Authentication and Firestore NoSQL database."
+    },
+    {
+      "name": "GitHub",
+      "role": "Version control and centralized repository for collaborative development."
+    },
+    {
+      "name": "Vercel",
+      "role": "Cloud hosting platform for high-performance deployment and serverless API execution."
+    },
+    {
+      "name": "Cloudflare",
+      "role": "DNS management and security layer for the custom domain (woong.app)."
+    }
+  ],
+  "dependencies": {
+    "frontend": [
+      "Framer Motion (Animations)",
+      "Lucide React (Icons)",
+      "React Router (Navigation)",
+      "i18next (Multi-language support)",
+      "Axios (API communication)"
+    ],
+    "backend": [
+      "ExpressRouter (API proxying)",
+      "Axios-Retry (Error handling)",
+      "tsx (TypeScript execution)"
+    ]
+  },
+  "workflow": {
+    "steps": [
+      "AI Studio: Coding and testing",
+      "GitHub: Source code storage and sync",
+      "Vercel: Automated build and deployment",
+      "Firebase: Live data and user auth storage",
+      "Cloudflare: Domain DNS routing"
+    ]
+  }
+}
